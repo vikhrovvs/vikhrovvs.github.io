@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#11130f" />
+    <meta name="description" content="Личная лаборатория небольших веб-проектов и экспериментов." />
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2311130f'/%3E%3Ccircle cx='10' cy='19' r='5' fill='%23d8ff43'/%3E%3Ccircle cx='23' cy='9' r='3' fill='%23d8ff43'/%3E%3Cpath d='m14 16 7-5' stroke='%23d8ff43' stroke-width='2'/%3E%3C/svg%3E" />
+    <title>vikhrovvs — проекты</title>
+    <link rel="stylesheet" href="./home.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="site-header">
+        <a class="identity" href="./" aria-label="vikhrovvs, главная">
+          <span class="identity-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span>vikhrovvs</span>
+        </a>
+        <span class="section-label">личная лаборатория</span>
+      </header>
+
+      <main>
+        <section class="intro" aria-labelledby="page-title">
+          <p class="eyebrow"><span>01</span> коллекция</p>
+          <h1 id="page-title">Проекты</h1>
+        </section>
+
+        <section class="projects" aria-label="Проекты">
+          <a class="project-card" href="./anagrams/">
+            <div class="card-topline">
+              <span>01 / язык</span>
+              <span class="project-status"><i aria-hidden="true"></i> работает</span>
+            </div>
+
+            <div class="project-visual" aria-hidden="true">
+              <svg viewBox="0 0 640 280" role="presentation">
+                <g class="edges">
+                  <path d="M320 140 200 82M320 140 454 74M320 140 482 178M320 140 184 200M200 82 112 130M454 74 548 112M482 178 552 224M184 200 98 234" />
+                </g>
+                <g class="node satellite"><circle cx="200" cy="82" r="32" /><text x="200" y="86">рот</text></g>
+                <g class="node satellite"><circle cx="454" cy="74" r="28" /><text x="454" y="78">так</text></g>
+                <g class="node satellite"><circle cx="482" cy="178" r="24" /><text x="482" y="182">тон</text></g>
+                <g class="node satellite"><circle cx="184" cy="200" r="27" /><text x="184" y="204">это</text></g>
+                <g class="node faint"><circle cx="112" cy="130" r="18" /><circle cx="548" cy="112" r="15" /><circle cx="552" cy="224" r="20" /><circle cx="98" cy="234" r="14" /></g>
+                <g class="node core">
+                  <circle cx="320" cy="140" r="54" />
+                  <text class="main-word" x="320" y="132">кто</text>
+                  <text class="sub-word" x="320" y="151">кот · ток</text>
+                </g>
+              </svg>
+            </div>
+
+            <div class="card-copy">
+              <div>
+                <p>Интерактивный эксперимент</p>
+                <h2>Словограф</h2>
+                <p class="description">Карта русских анаграмм и слов, которые отличаются одной буквой.</p>
+              </div>
+              <span class="open-project">Открыть граф <span aria-hidden="true">↗</span></span>
+            </div>
+          </a>
+        </section>
+      </main>
+
+      <footer>
+        <span>vikhrovvs.github.io</span>
+        <span>2026</span>
+      </footer>
+    </div>
+  </body>
+</html>
