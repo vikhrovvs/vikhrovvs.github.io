@@ -13,10 +13,17 @@ site/
 │   ├── styles.css
 │   ├── app.js
 │   └── data/graph.json
-└── word-route/         # ежедневная игра на том же графе
+├── word-route/         # ежедневная игра на том же графе
+│   ├── index.html
+│   ├── styles.css
+│   └── app.js
+└── word-grid/          # поиск квадрата 4 × 4 для заданных слов
     ├── index.html
     ├── styles.css
-    └── app.js
+    ├── app.js
+    ├── worker.js
+    ├── solver.py
+    └── ALGORITHM.md
 ```
 
 Чтобы добавить проект, создайте новую папку в `site/` и добавьте карточку-ссылку на главную страницу.
@@ -32,6 +39,7 @@ python3 -m http.server 4173 --directory site
 - главная: http://localhost:4173/
 - Словограф: http://localhost:4173/anagrams/
 - Словесный маршрут: http://localhost:4173/word-route/
+- Словесный квадрат: http://localhost:4173/word-grid/
 
 ## Проверка
 
@@ -39,7 +47,7 @@ python3 -m http.server 4173 --directory site
 python3 scripts/check_site.py
 ```
 
-Команда проверяет структуру сайта, локальные ссылки и инварианты `graph.json`. Если установлен npm, доступен эквивалентный алиас `npm run check`.
+Команда проверяет структуру сайта, локальные ссылки, синтаксис Python-решателя и инварианты `graph.json`. Отдельные тесты алгоритма запускаются через `python3 scripts/test_word_grid.py`. Если установлен npm, доступен эквивалентный алиас `npm run check`.
 
 Инструкции для Codex находятся в `AGENTS.md`, а устойчивый контекст проекта — в `MEMORY.md`.
 

@@ -1,0 +1,574 @@
+"""Exact solver for a 4 x 4 Boggle-like word board.
+
+The browser imports this file unchanged through Pyodide.  The search is modelled
+as a constraint-satisfaction problem (CSP): every character position in every
+essential word is a variable, and its domain is the set of 16 board cells.
+
+There are three constraints:
+
+* consecutive positions of a word must be neighbours on the board;
+* all positions inside one word must use different cells;
+* positions containing different letters cannot use the same cell.
+
+The solver uses bit masks for the 16-cell domains, maintains arc consistency
+for neighbour constraints, checks all-different constraints with bipartite
+matching, and branches on the smallest remaining domain.  It is a complete
+search: ``unsatisfiable`` means that every possible assignment was rejected.
+"""
+
+from __future__ import annotations
+
+from collections import Counter, defaultdict, deque
+import json
+import re
+import time
+import unicodedata
+
+
+GRID_SIDE = 4
+CELL_COUNT = GRID_SIDE * GRID_SIDE
+ALL_CELLS = (1 << CELL_COUNT) - 1
+ROOT_CELL_ORBITS = (0, 1, 5)  # corner, non-corner edge, inner cell
+MAX_WORDS = 80
+MAX_ESSENTIAL_POSITIONS = 320
+DEFAULT_TIME_LIMIT_SECONDS = 20.0
+
+
+def _build_neighbour_masks() -> tuple[int, ...]:
+    masks: list[int] = []
+    for cell in range(CELL_COUNT):
+        row, column = divmod(cell, GRID_SIDE)
+        mask = 0
+        for row_delta in (-1, 0, 1):
+            for column_delta in (-1, 0, 1):
+                if row_delta == column_delta == 0:
+                    continue
+                neighbour_row = row + row_delta
+                neighbour_column = column + column_delta
+                if 0 <= neighbour_row < GRID_SIDE and 0 <= neighbour_column < GRID_SIDE:
+                    mask |= 1 << (neighbour_row * GRID_SIDE + neighbour_column)
+        masks.append(mask)
+    return tuple(masks)
+
+
+NEIGHBOUR_MASKS = _build_neighbour_masks()
+WORD_SPLITTER = re.compile(r"[\n,;]+")
+
+
+class SearchTimedOut(Exception):
+    """Raised when a bounded browser search reaches its deadline."""
+
+
+class InputError(ValueError):
+    """Raised when the submitted word list cannot be interpreted."""
+
+
+def _normalise_words(raw_words: str) -> list[str]:
+    words: list[str] = []
+    seen: set[str] = set()
+    for raw_word in WORD_SPLITTER.split(raw_words):
+        word = unicodedata.normalize("NFC", raw_word.strip().lower())
+        if not word:
+            continue
+        if not word.isalpha():
+            raise InputError(f"«{word}»: используйте только буквы, без пробелов и дефисов.")
+        if word not in seen:
+            seen.add(word)
+            words.append(word)
+
+    if not words:
+        raise InputError("Введите хотя бы одно слово.")
+    if len(words) > MAX_WORDS:
+        raise InputError(f"Сейчас поддерживается не больше {MAX_WORDS} разных слов за один поиск.")
+    return words
+
+
+def _necessary_cell_counts(words: list[str]) -> dict[str, int]:
+    """Minimum number of cells required for each letter.
+
+    A board cell may be reused between words, so for a letter we need the
+    maximum multiplicity in any one word, rather than the sum over all words.
+    """
+
+    required: dict[str, int] = defaultdict(int)
+    for word in words:
+        for letter, count in Counter(word).items():
+            required[letter] = max(required[letter], count)
+    return dict(required)
+
+
+def _essential_words(words: list[str]) -> list[str]:
+    """Drop constraints already guaranteed by a longer word.
+
+    If ``кот`` is a substring of ``скотина``, every path for the latter already
+    contains a valid path for the former.  Reverse paths are valid too.
+    """
+
+    essential: list[str] = []
+    for word in sorted(words, key=lambda item: (-len(item), item)):
+        if any(word in longer or word in longer[::-1] for longer in essential):
+            continue
+        essential.append(word)
+    return essential
+
+
+def _iter_cells(mask: int):
+    while mask:
+        bit = mask & -mask
+        yield bit.bit_length() - 1
+        mask ^= bit
+
+
+def _has_distinct_matching(variable_ids: list[int], domains: list[int]) -> bool:
+    """Check Hall's condition by finding a variable-to-cell matching."""
+
+    ordered = sorted(variable_ids, key=lambda variable: domains[variable].bit_count())
+    cell_to_variable = [-1] * CELL_COUNT
+
+    def augment(variable: int, visited_cells: set[int]) -> bool:
+        for cell in _iter_cells(domains[variable]):
+            if cell in visited_cells:
+                continue
+            visited_cells.add(cell)
+            previous = cell_to_variable[cell]
+            if previous == -1 or augment(previous, visited_cells):
+                cell_to_variable[cell] = variable
+                return True
+        return False
+
+    return all(augment(variable, set()) for variable in ordered)
+
+
+def _find_word_path(board: list[str], word: str) -> list[int] | None:
+    """Recover one visible path for a word on the completed board."""
+
+    def visit(cell: int, position: int, used: int, path: list[int]) -> list[int] | None:
+        if position == len(word) - 1:
+            return path.copy()
+        candidates = NEIGHBOUR_MASKS[cell] & ~used
+        for neighbour in _iter_cells(candidates):
+            if board[neighbour] != word[position + 1]:
+                continue
+            path.append(neighbour)
+            found = visit(neighbour, position + 1, used | (1 << neighbour), path)
+            if found is not None:
+                return found
+            path.pop()
+        return None
+
+    for start in range(CELL_COUNT):
+        if board[start] == word[0]:
+            found = visit(start, 0, 1 << start, [start])
+            if found is not None:
+                return found
+    return None
+
+
+class WordGridCsp:
+    """Specialised CSP with 16-bit domains and exact backtracking."""
+
+    def __init__(self, words: list[str], minimum_letter_cells: dict[str, int], deadline: float):
+        self.words = words
+        self.minimum_letter_cells = minimum_letter_cells
+        minimum_total = sum(minimum_letter_cells.values())
+        self.maximum_letter_cells = {
+            letter: CELL_COUNT - (minimum_total - minimum)
+            for letter, minimum in minimum_letter_cells.items()
+        }
+        self.deadline = deadline
+
+        self.letters: list[str] = []
+        self.word_variables: list[list[int]] = []
+        self.variable_word: list[int] = []
+        self.adjacent_variables: list[list[int]] = []
+        self.letter_variables: dict[str, list[int]] = defaultdict(list)
+
+        for word_index, word in enumerate(words):
+            variables: list[int] = []
+            for letter in word:
+                variable = len(self.letters)
+                variables.append(variable)
+                self.letters.append(letter)
+                self.variable_word.append(word_index)
+                self.adjacent_variables.append([])
+                self.letter_variables[letter].append(variable)
+            self.word_variables.append(variables)
+            for first, second in zip(variables, variables[1:]):
+                self.adjacent_variables[first].append(second)
+                self.adjacent_variables[second].append(first)
+
+        self.nodes_visited = 0
+        self.failed_states: set[tuple[int, ...]] = set()
+        self.neighbour_union_cache: dict[int, int] = {0: 0}
+
+    def _check_deadline(self) -> None:
+        if time.perf_counter() >= self.deadline:
+            raise SearchTimedOut
+
+    def _neighbour_union(self, mask: int) -> int:
+        cached = self.neighbour_union_cache.get(mask)
+        if cached is not None:
+            return cached
+        result = 0
+        for cell in _iter_cells(mask):
+            result |= NEIGHBOUR_MASKS[cell]
+        self.neighbour_union_cache[mask] = result
+        return result
+
+    def _capacity_possible(self, domains: list[int], owners: list[str | None]) -> bool:
+        """Can different letters still reserve their minimum cell counts?"""
+
+        owned_by_letter: dict[str, int] = defaultdict(int)
+        all_owned = 0
+        for cell, letter in enumerate(owners):
+            if letter is not None:
+                bit = 1 << cell
+                owned_by_letter[letter] |= bit
+                all_owned |= bit
+
+        demands: list[tuple[str, int]] = []
+        for letter, minimum in self.minimum_letter_cells.items():
+            extra = minimum - owned_by_letter[letter].bit_count()
+            if extra > 0:
+                candidates = 0
+                for variable in self.letter_variables[letter]:
+                    candidates |= domains[variable]
+                candidates &= ~all_owned
+                demands.extend((letter, candidates) for _ in range(extra))
+
+        demands.sort(key=lambda item: item[1].bit_count())
+        cell_to_demand = [-1] * CELL_COUNT
+
+        def augment(demand_index: int, visited_cells: set[int]) -> bool:
+            for cell in _iter_cells(demands[demand_index][1]):
+                if cell in visited_cells:
+                    continue
+                visited_cells.add(cell)
+                previous = cell_to_demand[cell]
+                if previous == -1 or augment(previous, visited_cells):
+                    cell_to_demand[cell] = demand_index
+                    return True
+            return False
+
+        return all(augment(index, set()) for index in range(len(demands)))
+
+    def _word_path_possible(self, variable_ids: list[int], domains: list[int]) -> bool:
+        """Check one whole word, including adjacency and all-different at once."""
+
+        if len(variable_ids) == 1:
+            return bool(domains[variable_ids[0]])
+        if domains[variable_ids[-1]].bit_count() < domains[variable_ids[0]].bit_count():
+            variable_ids = variable_ids[::-1]
+
+        dead_states: set[tuple[int, int, int]] = set()
+        visited_states = 0
+
+        def extend(position: int, cell: int, used_cells: int) -> bool:
+            nonlocal visited_states
+            if position == len(variable_ids) - 1:
+                return True
+            state = (position, cell, used_cells)
+            if state in dead_states:
+                return False
+
+            visited_states += 1
+            if visited_states % 2048 == 0:
+                self._check_deadline()
+
+            next_domain = domains[variable_ids[position + 1]]
+            candidates = NEIGHBOUR_MASKS[cell] & next_domain & ~used_cells
+            ordered = sorted(
+                _iter_cells(candidates),
+                key=lambda candidate: (
+                    NEIGHBOUR_MASKS[candidate]
+                    & (domains[variable_ids[position + 2]] if position + 2 < len(variable_ids) else ALL_CELLS)
+                    & ~(used_cells | (1 << candidate))
+                ).bit_count(),
+            )
+            for candidate in ordered:
+                if extend(position + 1, candidate, used_cells | (1 << candidate)):
+                    return True
+            dead_states.add(state)
+            return False
+
+        start_domain = domains[variable_ids[0]]
+        return any(extend(0, start, 1 << start) for start in _iter_cells(start_domain))
+
+    def _propagate(
+        self,
+        domains: list[int],
+        owners: list[str | None],
+        changed_variables: list[int],
+    ) -> bool:
+        """Propagate singleton, adjacency, and matching constraints."""
+
+        queue = deque(changed_variables)
+        queued = set(changed_variables)
+        propagated_singletons: set[int] = set()
+
+        def narrow(variable: int, new_domain: int) -> bool:
+            if new_domain == domains[variable]:
+                return True
+            domains[variable] = new_domain
+            if not new_domain:
+                return False
+            if variable not in queued:
+                queued.add(variable)
+                queue.append(variable)
+            return True
+
+        while queue:
+            variable = queue.popleft()
+            queued.discard(variable)
+            domain = domains[variable]
+            if not domain:
+                return False
+
+            # Arc consistency for the two path neighbours of this position.
+            supported_cells = self._neighbour_union(domain)
+            for neighbour in self.adjacent_variables[variable]:
+                if not narrow(neighbour, domains[neighbour] & supported_cells):
+                    return False
+
+            if domain & (domain - 1) or variable in propagated_singletons:
+                continue
+            propagated_singletons.add(variable)
+            cell = domain.bit_length() - 1
+            letter = self.letters[variable]
+
+            existing_owner = owners[cell]
+            if existing_owner is not None and existing_owner != letter:
+                return False
+            if existing_owner is None:
+                owners[cell] = letter
+                for other_letter, variables in self.letter_variables.items():
+                    if other_letter == letter:
+                        continue
+                    for other in variables:
+                        if not narrow(other, domains[other] & ~domain):
+                            return False
+
+                # Other letters must keep their minimum number of distinct
+                # cells.  Once this letter reaches its resulting upper bound,
+                # all its remaining occurrences have to reuse those cells.
+                owned_by_letter = 0
+                for owned_cell, owner in enumerate(owners):
+                    if owner == letter:
+                        owned_by_letter |= 1 << owned_cell
+                if owned_by_letter.bit_count() > self.maximum_letter_cells[letter]:
+                    return False
+                if owned_by_letter.bit_count() == self.maximum_letter_cells[letter]:
+                    for same_letter_variable in self.letter_variables[letter]:
+                        if not narrow(
+                            same_letter_variable,
+                            domains[same_letter_variable] & owned_by_letter,
+                        ):
+                            return False
+
+            # All positions of one word must be pairwise different, including
+            # repeated occurrences of the same letter.
+            for other in self.word_variables[self.variable_word[variable]]:
+                if other != variable and not narrow(other, domains[other] & ~domain):
+                    return False
+
+            if len(propagated_singletons) % 32 == 0:
+                self._check_deadline()
+
+        # Arc consistency works on pairs and can miss a conflict that is only
+        # visible across the whole word.  Check that each word still has at
+        # least one complete simple path through its current domains.
+        for variables in self.word_variables:
+            if not self._word_path_possible(variables, domains):
+                return False
+        return self._capacity_possible(domains, owners)
+
+    def _choose_variable(self, domains: list[int]) -> int | None:
+        candidates = [variable for variable, domain in enumerate(domains) if domain & (domain - 1)]
+        if not candidates:
+            return None
+
+        def priority(variable: int) -> tuple[int, int, int]:
+            domain_size = domains[variable].bit_count()
+            adjacency_pressure = sum(
+                CELL_COUNT + 1 - domains[neighbour].bit_count()
+                for neighbour in self.adjacent_variables[variable]
+            )
+            word_length = len(self.word_variables[self.variable_word[variable]])
+            return domain_size, -adjacency_pressure, -word_length
+
+        return min(candidates, key=priority)
+
+    def _ordered_cells(self, variable: int, domains: list[int], root: bool) -> list[int]:
+        cells = list(_iter_cells(domains[variable]))
+        if root and domains[variable] == ALL_CELLS:
+            # The empty square has eight rotations/reflections.  Any solution
+            # can move this first occurrence to one of these three cell orbits.
+            cells = [cell for cell in ROOT_CELL_ORBITS if domains[variable] & (1 << cell)]
+
+        word_variables = self.word_variables[self.variable_word[variable]]
+        letter = self.letters[variable]
+
+        def score(cell: int) -> int:
+            bit = 1 << cell
+            adjacency_options = sum(
+                (NEIGHBOUR_MASKS[cell] & domains[neighbour]).bit_count()
+                for neighbour in self.adjacent_variables[variable]
+            )
+            same_letter_sharing = sum(
+                1 for other in self.letter_variables[letter]
+                if other != variable and domains[other] & bit
+            )
+            immediate_removals = sum(
+                1 for other in word_variables
+                if other != variable and domains[other] & bit
+            )
+            return 12 * adjacency_options + same_letter_sharing - immediate_removals
+
+        return sorted(cells, key=lambda cell: (-score(cell), cell))
+
+    def _search(
+        self,
+        domains: list[int],
+        owners: list[str | None],
+        depth: int,
+    ) -> tuple[list[int], list[str | None]] | None:
+        self.nodes_visited += 1
+        self._check_deadline()
+
+        state_key = tuple(domains)
+        if state_key in self.failed_states:
+            return None
+
+        variable = self._choose_variable(domains)
+        if variable is None:
+            return domains, owners
+
+        for cell in self._ordered_cells(variable, domains, root=depth == 0):
+            next_domains = domains.copy()
+            next_owners = owners.copy()
+            next_domains[variable] = 1 << cell
+            if self._propagate(next_domains, next_owners, [variable]):
+                solution = self._search(next_domains, next_owners, depth + 1)
+                if solution is not None:
+                    return solution
+
+        if len(self.failed_states) < 100_000:
+            self.failed_states.add(state_key)
+        return None
+
+    def solve(self) -> tuple[list[int], list[str | None]] | None:
+        domains = [ALL_CELLS] * len(self.letters)
+        owners: list[str | None] = [None] * CELL_COUNT
+        if not all(_has_distinct_matching(variables, domains) for variables in self.word_variables):
+            return None
+        if not self._capacity_possible(domains, owners):
+            return None
+        return self._search(domains, owners, 0)
+
+
+def solve(raw_words: str, time_limit_seconds: float = DEFAULT_TIME_LIMIT_SECONDS) -> dict:
+    """Solve submitted words and return a JSON-friendly result dictionary."""
+
+    started = time.perf_counter()
+    try:
+        words = _normalise_words(raw_words)
+    except InputError as error:
+        return {"status": "invalid", "message": str(error)}
+
+    longest = max(words, key=len)
+    if len(longest) > CELL_COUNT:
+        return {
+            "status": "unsatisfiable",
+            "message": f"Слово «{longest}» длиннее 16 букв, поэтому не помещается без повторной клетки.",
+        }
+
+    unique_letters = set("".join(words))
+    if len(unique_letters) > CELL_COUNT:
+        return {
+            "status": "unsatisfiable",
+            "message": f"В словах {len(unique_letters)} разных букв, а клеток только 16.",
+        }
+
+    minimum_letter_cells = _necessary_cell_counts(words)
+    minimum_cells = sum(minimum_letter_cells.values())
+    if minimum_cells > CELL_COUNT:
+        return {
+            "status": "unsatisfiable",
+            "message": (
+                f"Из-за повторов букв нужно минимум {minimum_cells} клеток. "
+                "Между разными словами клетки переиспользовать можно, внутри одного — нельзя."
+            ),
+        }
+
+    essential = _essential_words(words)
+    variable_count = sum(map(len, essential))
+    if variable_count > MAX_ESSENTIAL_POSITIONS:
+        return {
+            "status": "invalid",
+            "message": (
+                "После удаления вложенных слов осталось слишком много позиций для браузерного поиска "
+                f"({variable_count}, лимит {MAX_ESSENTIAL_POSITIONS})."
+            ),
+        }
+
+    time_limit_seconds = max(0.1, float(time_limit_seconds))
+    solver = WordGridCsp(
+        essential,
+        minimum_letter_cells,
+        deadline=started + time_limit_seconds,
+    )
+
+    try:
+        solution = solver.solve()
+    except SearchTimedOut:
+        elapsed_ms = round((time.perf_counter() - started) * 1000)
+        return {
+            "status": "timeout",
+            "message": (
+                f"За {time_limit_seconds:g} с не удалось ни найти квадрат, ни доказать, что его нет. "
+                "Поиск можно остановить без зависания страницы и запустить для меньшего набора."
+            ),
+            "stats": {"elapsed_ms": elapsed_ms, "nodes": solver.nodes_visited},
+        }
+
+    elapsed_ms = round((time.perf_counter() - started) * 1000)
+    base_stats = {
+        "elapsed_ms": elapsed_ms,
+        "nodes": solver.nodes_visited,
+        "variables": variable_count,
+        "essential_words": len(essential),
+        "removed_words": len(words) - len(essential),
+        "minimum_cells": minimum_cells,
+    }
+
+    if solution is None:
+        return {
+            "status": "unsatisfiable",
+            "message": "Заполнения нет: точный поиск перебрал все допустимые варианты.",
+            "stats": base_stats,
+        }
+
+    domains, owners = solution
+    filler = min(Counter("".join(words)).items(), key=lambda item: (-item[1], item[0]))[0]
+    board = [letter if letter is not None else filler for letter in owners]
+
+    paths = []
+    for word in words:
+        path = _find_word_path(board, word)
+        if path is None:  # Defensive assertion: a solved CSP must expose every path.
+            raise AssertionError(f"Could not recover the path for {word!r}")
+        paths.append({"word": word, "path": path})
+
+    return {
+        "status": "solved",
+        "message": "Квадрат найден. Выберите слово, чтобы увидеть порядок клеток.",
+        "board": board,
+        "words": paths,
+        "stats": base_stats,
+    }
+
+
+def solve_json(raw_words: str, time_limit_seconds: float = DEFAULT_TIME_LIMIT_SECONDS) -> str:
+    """Stable string boundary used by the JavaScript worker."""
+
+    return json.dumps(solve(raw_words, time_limit_seconds), ensure_ascii=False)

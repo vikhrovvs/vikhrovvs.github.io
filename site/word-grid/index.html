@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#11130f" />
+    <meta
+      name="description"
+      content="Найдите квадрат 4 × 4, в котором все заданные слова читаются по соседним клеткам."
+    />
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2311130f'/%3E%3Cpath d='M7 7h8v8H7zm10 0h8v8h-8zM7 17h8v8H7zm10 0h8v8h-8z' fill='%23d8ff43'/%3E%3C/svg%3E"
+    />
+    <title>Словесный квадрат</title>
+    <link rel="stylesheet" href="./styles.css?v=1" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="../" aria-label="Вернуться к проектам">
+          <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span>Словесный квадрат</span>
+        </a>
+        <nav aria-label="Навигация">
+          <a href="../word-route/">Маршрут</a>
+          <a href="../">Все проекты</a>
+        </nav>
+      </header>
+
+      <main>
+        <header class="intro">
+          <p class="eyebrow"><span>03</span> конструктор</p>
+          <h1>Соберите слова<br />в одном квадрате</h1>
+          <p>
+            Каждое слово идёт по соседним клеткам — по стороне или диагонали.
+            Внутри одного слова повторно заходить в клетку нельзя.
+          </p>
+        </header>
+
+        <section class="workspace" aria-label="Поиск словесного квадрата">
+          <form class="input-panel" id="solver-form">
+            <div class="panel-heading">
+              <div>
+                <p>Входные данные</p>
+                <h2>Слова</h2>
+              </div>
+              <span id="word-count">5 слов</span>
+            </div>
+
+            <label class="words-field" for="words-input">
+              По одному в строке
+              <textarea id="words-input" name="words" spellcheck="false">кино
+нота
+море
+след
+угол</textarea>
+            </label>
+
+            <div class="input-hint">
+              <span>До 16 букв в слове</span>
+              <span>Регистр не важен</span>
+            </div>
+
+            <div class="form-actions">
+              <button class="primary-button" id="solve-button" type="submit">
+                Найти квадрат <span aria-hidden="true">→</span>
+              </button>
+              <button class="secondary-button" id="stop-button" type="button" hidden>Остановить</button>
+            </div>
+            <p class="runtime-note">Python загрузится только после запуска поиска.</p>
+          </form>
+
+          <section class="result-panel" aria-labelledby="result-title">
+            <div class="panel-heading result-heading">
+              <div>
+                <p>Результат</p>
+                <h2 id="result-title">Квадрат 4 × 4</h2>
+              </div>
+              <span class="status-badge" id="status-badge" data-state="idle">готов к поиску</span>
+            </div>
+
+            <div class="result-layout">
+              <div class="board-stage" id="board-stage">
+                <div class="board-grid" id="board-grid" aria-label="Пустой квадрат 4 на 4">
+                  <span>·</span><span>·</span><span>·</span><span>·</span>
+                  <span>·</span><span>·</span><span>·</span><span>·</span>
+                  <span>·</span><span>·</span><span>·</span><span>·</span>
+                  <span>·</span><span>·</span><span>·</span><span>·</span>
+                </div>
+                <svg class="path-overlay" id="path-overlay" viewBox="0 0 400 400" aria-hidden="true"></svg>
+              </div>
+
+              <div class="result-copy">
+                <p class="result-message" id="result-message" role="status" aria-live="polite">
+                  Введите слова и запустите поиск. Если решение существует, здесь появятся поле и маршруты.
+                </p>
+                <div class="word-paths" id="word-paths" aria-label="Маршруты слов"></div>
+                <p class="result-stats" id="result-stats"></p>
+              </div>
+            </div>
+          </section>
+        </section>
+
+        <section class="method" aria-labelledby="method-title">
+          <div class="method-heading">
+            <p class="eyebrow"><span>?</span> алгоритм</p>
+            <h2 id="method-title">Не 16! досок</h2>
+          </div>
+          <div class="method-copy">
+            <p>
+              Python ищет не перестановку букв, а клетку для каждой позиции каждого слова.
+              После каждого выбора он сразу распространяет ограничения и отбрасывает ветви,
+              в которых соседство или уникальность клеток уже нарушены.
+            </p>
+            <ol>
+              <li><span>01</span> Проверить необходимые условия по длинам и повторам букв.</li>
+              <li><span>02</span> Оставить только слова, которые не покрываются более длинными.</li>
+              <li><span>03</span> Выбирать переменную с наименьшим числом допустимых клеток.</li>
+              <li><span>04</span> Поддерживать согласованность соседств и делать откат при конфликте.</li>
+            </ol>
+          </div>
+        </section>
+      </main>
+
+      <footer>
+        <span>Вычисления остаются в браузере</span>
+        <span>Python · WebAssembly</span>
+      </footer>
+    </div>
+    <script type="module" src="./app.js?v=1"></script>
+  </body>
+</html>

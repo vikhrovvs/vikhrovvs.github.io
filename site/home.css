@@ -63,6 +63,12 @@ h1 { margin: 0; font: 600 clamp(4.8rem, 13vw, 11rem)/.78 var(--display); letter-
 .route-step.active circle { fill: var(--accent); }
 .route-step.target circle { fill: #ffb56b; }
 .route-option { opacity: .7; }
+.grid-visual { background-image: radial-gradient(circle at 50% 48%, rgba(216,255,67,.1), transparent 40%), radial-gradient(circle, rgba(154,164,143,.13) 1px, transparent 1px); }
+.grid-path { fill: none; stroke: var(--blue); stroke-width: 9; stroke-linecap: round; stroke-linejoin: round; opacity: .78; }
+.grid-cells rect { fill: #20241d; stroke: #4a5145; stroke-width: 1; }
+.grid-cells rect.active { fill: var(--accent); stroke: var(--accent); }
+.grid-letters text { fill: #dce0d7; font: 700 15px var(--display); text-anchor: middle; }
+.grid-letters text:nth-child(1), .grid-letters text:nth-child(2), .grid-letters text:nth-child(5), .grid-letters text:nth-child(6) { fill: var(--ink); }
 .card-copy { display: flex; flex-direction: column; justify-content: space-between; min-height: 275px; padding: 2.2rem clamp(1.5rem, 3vw, 2.7rem) clamp(1.5rem, 3vw, 2.2rem); }
 .card-copy p { margin: 0; color: #838b7d; font-size: .75rem; }
 .card-copy h2 { margin: 1.1rem 0 .9rem; font: 600 clamp(2.7rem, 4vw, 4.6rem)/.88 var(--display); letter-spacing: -.065em; }

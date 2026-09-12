@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import ast
 import json
 import sys
 from html.parser import HTMLParser
@@ -95,6 +96,11 @@ def main() -> int:
         SITE / "index.html",
         SITE / "anagrams" / "index.html",
         SITE / "word-route" / "index.html",
+        SITE / "word-grid" / "index.html",
+        SITE / "word-grid" / "app.js",
+        SITE / "word-grid" / "solver.py",
+        SITE / "word-grid" / "styles.css",
+        SITE / "word-grid" / "worker.js",
         ROOT / ".github" / "workflows" / "pages.yml",
     ]
     missing = [str(path.relative_to(ROOT)) for path in required if not path.exists()]
@@ -102,6 +108,7 @@ def main() -> int:
         raise AssertionError("Missing required files: " + ", ".join(missing))
 
     html_count, reference_count = check_local_references()
+    ast.parse((SITE / "word-grid" / "solver.py").read_text(encoding="utf-8"))
     node_count, edge_count, word_count = check_graph()
     print(f"OK: {html_count} HTML files, {reference_count} local references")
     print(f"OK: graph has {node_count} nodes, {edge_count} edges, {word_count} unique words")

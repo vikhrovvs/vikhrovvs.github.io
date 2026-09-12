@@ -26,8 +26,11 @@ jobs:
       - name: Validate static site
         run: |
           python3 scripts/check_site.py
+          python3 scripts/test_word_grid.py
           node --check site/anagrams/app.js
           node --check site/word-route/app.js
+          node --check site/word-grid/app.js
+          node --check site/word-grid/worker.js
       - uses: actions/upload-pages-artifact@v4
         with:
           path: site
