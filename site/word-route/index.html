@@ -7,7 +7,7 @@
     <meta name="description" content="Ежедневная игра: проложите маршрут между русскими словами, меняя или добавляя одну букву." />
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2311130f'/%3E%3Ccircle cx='8' cy='22' r='4' fill='%23d8ff43'/%3E%3Ccircle cx='24' cy='8' r='4' fill='%23f3f0e8'/%3E%3Cpath d='M11 19 21 11' stroke='%2393b8ff' stroke-width='2' stroke-dasharray='3 2'/%3E%3C/svg%3E" />
     <title>Словесный маршрут</title>
-    <link rel="stylesheet" href="./styles.css?v=2" />
+    <link rel="stylesheet" href="./styles.css?v=3" />
   </head>
   <body>
     <div class="app-shell">
@@ -76,6 +76,14 @@
             <h2>Меняйте или добавляйте одну букву</h2>
             <p>Порядок букв не важен: анаграммы живут в одной карточке.</p>
           </div>
+          <div class="hints">
+            <p class="rules-kicker">Подсказки</p>
+            <div class="hint-actions">
+              <button class="secondary-button" id="hint-word" type="button">Слово</button>
+              <button class="secondary-button" id="hint-distance" type="button">Длина пути</button>
+            </div>
+            <p class="hint-output" id="hint-output" role="status" aria-live="polite"></p>
+          </div>
           <div class="daily-meta">
             <span id="daily-date">—</span>
             <button class="copy-button" id="copy-link" type="button">Копировать ссылку</button>
@@ -127,6 +135,6 @@
     </dialog>
 
     <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
-    <script type="module" src="./app.js"></script>
+    <script type="module" src="./app.js?v=2"></script>
   </body>
 </html>

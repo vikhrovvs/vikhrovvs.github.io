@@ -11,12 +11,12 @@ const toast = document.querySelector('#toast');
 const state = {
   nodes: [], adjacency: [], wordIndex: new Map(),
   start: -1, target: -1, route: [], shortestPath: [],
-  mode: 'daily', sourceWord: '', targetWord: '', seed: 0, distance: 0,
+  mode: 'daily', sourceWord: '', targetWord: '', seed: 0, distance: 0, hintedNode: -1,
 };
 
 // Daily-диапазон вынесен отдельно, чтобы его можно было менять без правок алгоритма.
-const DAILY_DISTANCE_MIN = 4;
-const DAILY_DISTANCE_MAX = 8;
+const DAILY_DISTANCE_MIN = 3;
+const DAILY_DISTANCE_MAX = 5;
 
 const normalizeWord = (value) => value.trim().toLocaleLowerCase('ru-RU').normalize('NFC');
 const escapeHtml = (value) => value.replace(/[&<>'"]/g, (character) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#39;', '"':'&quot;' })[character]);
@@ -103,6 +103,7 @@ function relationLabel(type) { return type === 'add' ? '± буква' : 'зам
 function configureGame(config) {
   Object.assign(state, config);
   state.route = [state.start];
+  state.hintedNode = -1;
   state.shortestPath = config.path ?? shortestPath(state.start, state.target) ?? [];
   state.distance = Math.max(0, state.shortestPath.length - 1);
   render();
@@ -133,13 +134,19 @@ function render() {
   document.querySelector('#neighbor-count').textContent = neighbors.length;
   neighborsElement.innerHTML = neighbors.map(([index, type]) => {
     const words = nodeWords(index); const secondary = words.filter((word) => word !== state.nodes[index].label);
-    return `<button class="neighbor ${index === state.target ? 'target' : ''} ${visited.has(index) ? 'visited' : ''}" data-neighbor="${index}" type="button"><span class="edge-type">${relationLabel(type)}</span><strong>${escapeHtml(state.nodes[index].label)}</strong><small>${secondary.length ? secondary.map(escapeHtml).join(' · ') : `${state.adjacency[index].length} соседей`}</small></button>`;
+    return `<button class="neighbor ${index === state.target ? 'target' : ''} ${visited.has(index) ? 'visited' : ''} ${index === state.hintedNode ? 'hinted' : ''}" data-neighbor="${index}" type="button"><span class="edge-type">${relationLabel(type)}</span><strong>${escapeHtml(state.nodes[index].label)}</strong><small>${secondary.length ? secondary.map(escapeHtml).join(' · ') : `${state.adjacency[index].length} соседей`}</small></button>`;
   }).join('');
   if (!neighbors.length) neighborsElement.innerHTML = '<p>У этой вершины нет соседей. Вернитесь на шаг назад.</p>';
   if (current === state.target) showFinish();
 }
 
+function clearHint() {
+  state.hintedNode = -1;
+  document.querySelector('#hint-output').textContent = '';
+}
+
 function moveTo(index) {
+  clearHint();
   const previousPosition = state.route.lastIndexOf(index);
   if (previousPosition >= 0) state.route = state.route.slice(0, previousPosition + 1);
   else state.route.push(index);
@@ -149,7 +156,7 @@ function moveTo(index) {
 function showFinish() {
   const moves = state.route.length - 1; const minimum = state.distance;
   document.querySelector('#finish-title').textContent = moves === minimum ? 'Идеальный маршрут!' : 'Финиш!';
-  document.querySelector('#finish-score').textContent = `${moves} ${moves === 1 ? 'ход' : moves < 5 ? 'хода' : 'ходов'} · минимум ${minimum}`;
+  document.querySelector('#finish-score').textContent = `Ваш путь: ${moves} ${moves === 1 ? 'ход' : moves < 5 ? 'хода' : 'ходов'} · оптимальная длина: ${minimum}`;
   document.querySelector('#shortest-route').innerHTML = state.shortestPath.map((index, position) => `<span>${escapeHtml(displayWord(index, position === 0 ? state.sourceWord : position === state.shortestPath.length - 1 ? state.targetWord : ''))}</span>${position < state.shortestPath.length - 1 ? '<i>→</i>' : ''}`).join('');
   if (!finishDialog.open) finishDialog.showModal();
 }
@@ -157,6 +164,25 @@ function showFinish() {
 function showToast(message) {
   toast.textContent = message; toast.hidden = false;
   clearTimeout(showToast.timer); showToast.timer = setTimeout(() => { toast.hidden = true; }, 2200);
+}
+
+function showWordHint() {
+  const path = shortestPath(currentIndex(), state.target);
+  if (!path || path.length < 2) {
+    document.querySelector('#hint-output').textContent = 'Вы уже у цели.';
+    return;
+  }
+  state.hintedNode = path[1];
+  document.querySelector('#hint-output').textContent = `Следующее слово: ${displayWord(path[1], path[1] === state.target ? state.targetWord : '')}`;
+  render();
+}
+
+function showDistanceHint() {
+  const path = shortestPath(currentIndex(), state.target);
+  const distance = path ? path.length - 1 : null;
+  document.querySelector('#hint-output').textContent = distance === null
+    ? 'Путь к цели не найден.'
+    : `До цели: ${distance} ${distance === 1 ? 'ход' : distance > 1 && distance < 5 ? 'хода' : 'ходов'}.`;
 }
 
 async function copyLink() {
@@ -196,15 +222,17 @@ function showLoadError(error) {
 }
 
 neighborsElement.addEventListener('click', (event) => { const button = event.target.closest('[data-neighbor]'); if (button) moveTo(Number(button.dataset.neighbor)); });
-routeList.addEventListener('click', (event) => { const button = event.target.closest('[data-route-position]'); if (!button) return; state.route = state.route.slice(0, Number(button.dataset.routePosition) + 1); render(); });
-document.querySelector('#undo').addEventListener('click', () => { if (state.route.length > 1) { state.route.pop(); render(); } });
-document.querySelector('#restart').addEventListener('click', () => { state.route = [state.start]; render(); });
-document.querySelector('#finish-restart').addEventListener('click', () => { finishDialog.close(); state.route = [state.start]; render(); });
+routeList.addEventListener('click', (event) => { const button = event.target.closest('[data-route-position]'); if (!button) return; clearHint(); state.route = state.route.slice(0, Number(button.dataset.routePosition) + 1); render(); });
+document.querySelector('#undo').addEventListener('click', () => { if (state.route.length > 1) { clearHint(); state.route.pop(); render(); } });
+document.querySelector('#restart').addEventListener('click', () => { clearHint(); state.route = [state.start]; render(); });
+document.querySelector('#finish-restart').addEventListener('click', () => { finishDialog.close(); clearHint(); state.route = [state.start]; render(); });
 document.querySelector('#finish-close').addEventListener('click', () => finishDialog.close());
 document.querySelector('#open-setup').addEventListener('click', () => setupDialog.showModal());
 document.querySelector('#close-setup').addEventListener('click', () => setupDialog.close());
 document.querySelector('#copy-link').addEventListener('click', copyLink);
 document.querySelector('#finish-share').addEventListener('click', copyLink);
+document.querySelector('#hint-word').addEventListener('click', showWordHint);
+document.querySelector('#hint-distance').addEventListener('click', showDistanceHint);
 
 document.querySelector('#start-custom').addEventListener('click', () => {
   const from = normalizeWord(document.querySelector('#from-input').value); const to = normalizeWord(document.querySelector('#to-input').value); const status = document.querySelector('#custom-status');
