@@ -31,6 +31,9 @@ const state = {
   anagramLeaders: [],
   anagramLeaderCursor: 0,
   anagramLeaderTimer: 0,
+  activePath: null,
+  pathTarget: '',
+  pathMessage: '',
 };
 
 const COLORS = {
@@ -239,6 +242,70 @@ function createNeighborhood(centerIndex) {
   visibleCount.textContent = `${state.visibleNodes.length} вершин рядом`;
 }
 
+function findShortestPath(start, target) {
+  if (start === target) return [start];
+  const previous = new Int32Array(state.nodes.length);
+  previous.fill(-2);
+  previous[start] = -1;
+  const queue = new Int32Array(state.nodes.length);
+  let head = 0;
+  let tail = 0;
+  queue[tail] = start;
+  tail += 1;
+
+  while (head < tail) {
+    const current = queue[head];
+    head += 1;
+    for (const [neighbor] of state.adjacency[current]) {
+      if (previous[neighbor] !== -2) continue;
+      previous[neighbor] = current;
+      if (neighbor === target) {
+        const path = [target];
+        let cursor = current;
+        while (cursor !== -1) {
+          path.push(cursor);
+          cursor = previous[cursor];
+        }
+        return path.reverse();
+      }
+      queue[tail] = neighbor;
+      tail += 1;
+    }
+  }
+  return null;
+}
+
+function pathEdgeType(first, second) {
+  return state.adjacency[first].find(([neighbor]) => neighbor === second)?.[1] ?? 'replace';
+}
+
+function createPathView(path) {
+  const columns = Math.min(6, path.length);
+  const rows = Math.ceil(path.length / columns);
+  state.visibleNodes = path.map((index, order) => {
+    const row = Math.floor(order / columns);
+    const itemsInRow = Math.min(columns, path.length - row * columns);
+    const positionInRow = order % columns;
+    const column = row % 2 === 0 ? positionInRow : itemsInRow - positionInRow - 1;
+    return {
+      index,
+      level: order === 0 ? 0 : 1,
+      pathOrder: order,
+      x: (column - (itemsInRow - 1) / 2) * 180,
+      y: (row - (rows - 1) / 2) * 150,
+      radius: nodeRadius(state.nodes[index]),
+    };
+  });
+  state.visibleEdges = path.slice(1).map((index, order) => ({
+    a: order,
+    b: order + 1,
+    type: pathEdgeType(path[order], index),
+    isPath: true,
+  }));
+  fitView();
+  visibleCount.textContent = `${path.length} ${wordForm(path.length, ['вершина', 'вершины', 'вершин'])} в пути`;
+}
+
 function settleLayout() {
   const nodes = state.visibleNodes;
   for (let step = 0; step < 130; step += 1) {
@@ -343,10 +410,10 @@ function draw() {
     context.beginPath();
     context.moveTo(first.x, first.y);
     context.lineTo(second.x, second.y);
-    context.strokeStyle = edge.type === 'add' ? COLORS.add : COLORS.replace;
-    context.globalAlpha = edge.type === 'add' ? .42 : .25;
-    context.lineWidth = edge.type === 'add' ? 1.15 : .85;
-    context.setLineDash(edge.type === 'add' ? [5, 6] : []);
+    context.strokeStyle = edge.isPath ? COLORS.selected : edge.type === 'add' ? COLORS.add : COLORS.replace;
+    context.globalAlpha = edge.isPath ? .86 : edge.type === 'add' ? .42 : .25;
+    context.lineWidth = edge.isPath ? 2.6 : edge.type === 'add' ? 1.15 : .85;
+    context.setLineDash(edge.isPath ? [] : edge.type === 'add' ? [5, 6] : []);
     context.stroke();
   });
   context.setLineDash([]);
@@ -497,6 +564,15 @@ function showDetails(index) {
         ${node.words.map(([word, ipm]) => `<li><span>${escapeHtml(word)}</span><small>${formatIpm(ipm)} ipm</small></li>`).join('')}
       </ol>
     </section>
+    <section class="detail-section path-card">
+      <h2>Путь к другому слову</h2>
+      <form class="path-form" id="path-form">
+        <label class="sr-only" for="path-target">Конечное слово</label>
+        <input id="path-target" name="target" type="search" autocomplete="off" maxlength="24" placeholder="Например, «дом»" value="${escapeHtml(state.pathTarget)}" />
+        <button type="submit">Найти путь</button>
+      </form>
+      <div class="path-feedback" id="path-feedback">${pathResultMarkup(index)}</div>
+    </section>
     <section class="detail-section neighbors">
       <h2>Ближайшие вершины · ${state.adjacency[index].length}</h2>
       <div class="neighbor-list">
@@ -506,12 +582,65 @@ function showDetails(index) {
   detailsContent.querySelectorAll('[data-node]').forEach((button) => {
     button.addEventListener('click', () => selectNode(Number(button.dataset.node), true));
   });
+  detailsContent.querySelector('#path-form').addEventListener('submit', (event) => {
+    event.preventDefault();
+    showWordPath(index, event.currentTarget.elements.target.value);
+  });
+  detailsContent.querySelectorAll('[data-path-node]').forEach((button) => {
+    button.addEventListener('click', () => selectNode(Number(button.dataset.pathNode), true));
+  });
+}
+
+function pathResultMarkup(startIndex) {
+  if (state.pathMessage) return `<p class="path-message">${escapeHtml(state.pathMessage)}</p>`;
+  if (!state.activePath || state.activePath.start !== startIndex) {
+    return '<p class="path-hint">Покажем кратчайшую цепочку замен и добавлений букв.</p>';
+  }
+  const { nodes, targetWord } = state.activePath;
+  const steps = nodes.length - 1;
+  const summary = steps === 0 ? 'Уже в этой вершине' : `${steps} ${wordForm(steps, ['переход', 'перехода', 'переходов'])}`;
+  return `<p class="path-summary"><strong>${summary}</strong> · до «${escapeHtml(targetWord)}»</p>
+    <div class="path-sequence">
+      ${nodes.map((nodeIndex, order) => `<button type="button" data-path-node="${nodeIndex}">${escapeHtml(order === nodes.length - 1 ? targetWord : state.nodes[nodeIndex].label)}</button>`).join('<span aria-hidden="true">→</span>')}
+    </div>`;
+}
+
+function showWordPath(startIndex, rawTarget) {
+  const targetWord = normalizeWord(rawTarget);
+  state.pathTarget = targetWord;
+  state.pathMessage = '';
+  state.activePath = null;
+  if (!targetWord || !/^[а-яё]+$/u.test(targetWord)) {
+    state.pathMessage = 'Введите слово русскими буквами.';
+    showDetails(startIndex);
+    return;
+  }
+  const targetIndex = state.wordIndex.get(targetWord);
+  if (targetIndex === undefined) {
+    state.pathMessage = `«${targetWord}» нет в словаре.`;
+    showDetails(startIndex);
+    return;
+  }
+  const path = findShortestPath(startIndex, targetIndex);
+  if (!path) {
+    state.pathMessage = `Связный путь до «${targetWord}» не найден.`;
+    showDetails(startIndex);
+    return;
+  }
+  state.activePath = { start: startIndex, target: targetIndex, targetWord, nodes: path };
+  createPathView(path);
+  showDetails(startIndex);
 }
 
 function selectNode(index, rebuild = true) {
   state.selected = index;
   state.hovered = -1;
-  if (rebuild) createNeighborhood(index);
+  if (rebuild) {
+    state.activePath = null;
+    state.pathTarget = '';
+    state.pathMessage = '';
+    createNeighborhood(index);
+  }
   showDetails(index);
   const node = state.nodes[index];
   wordInput.value = node.label;

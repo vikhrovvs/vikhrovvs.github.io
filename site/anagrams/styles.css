@@ -124,6 +124,22 @@ button { color: inherit; }
 .neighbor-list button:hover { border-radius: 8px; background: #282d24; color: var(--accent); }
 .edge-badge { margin-left: auto; margin-right: .6rem; padding: .2rem .38rem; border: 1px solid #42483d; border-radius: 5px; color: #8f9688; font-size: .62rem; }
 .new-badge { display: inline-block; margin-top: .8rem; padding: .35rem .55rem; border: 1px solid #66533d; border-radius: 999px; color: var(--warm); font-size: .7rem; }
+.path-card { position: relative; padding: .9rem; overflow: hidden; border: 1px solid #46503c; border-radius: 14px; background: linear-gradient(145deg, rgba(216,255,67,.065), rgba(32,36,29,.35)); }
+.path-card::before { content: ''; position: absolute; top: 0; bottom: 0; left: 0; width: 2px; background: var(--accent); opacity: .68; }
+.path-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .45rem; }
+.path-form input { min-width: 0; height: 36px; padding: 0 .65rem; border: 1px solid #485040; border-radius: 8px; outline: 0; background: #171a15; color: var(--paper); font-size: .78rem; }
+.path-form input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(216,255,67,.11); }
+.path-form input::placeholder { color: #697064; }
+.path-form button { height: 36px; padding: 0 .7rem; border: 1px solid #667344; border-radius: 8px; background: #2b3024; color: var(--accent); font-size: .68rem; font-weight: 700; cursor: pointer; }
+.path-form button:hover { background: #353d28; }
+.path-feedback { margin-top: .65rem; }
+.path-hint, .path-message, .path-summary { margin: 0; color: #7f887a; font-size: .68rem; line-height: 1.45; }
+.path-message { color: var(--warm); }
+.path-summary strong { color: #cbd1c4; }
+.path-sequence { display: flex; align-items: center; gap: .3rem; margin-top: .55rem; overflow-x: auto; padding-bottom: .2rem; scrollbar-width: thin; }
+.path-sequence button { flex: 0 0 auto; padding: .3rem .45rem; border: 1px solid #3f463a; border-radius: 7px; background: #20251c; color: #d7dbd2; font-size: .68rem; cursor: pointer; }
+.path-sequence button:hover { border-color: var(--accent); color: var(--accent); }
+.path-sequence span { color: #596052; font-size: .7rem; }
 
 .about-popover { position: fixed; z-index: 50; top: 66px; right: 18px; width: min(390px, calc(100vw - 36px)); padding: 1.2rem; border: 1px solid #474d41; border-radius: 15px; background: #23271f; box-shadow: 0 24px 70px rgba(0,0,0,.42); }
 .about-head { display: flex; align-items: center; justify-content: space-between; }
