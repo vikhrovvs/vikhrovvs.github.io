@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "python3 -m http.server 4173 --directory site",
-    "build:data": "node scripts/build-data.mjs data/wordlist_detcorpus_50000.csv"
+    "build:data": "node scripts/build-data.mjs data/wordlist_detcorpus_50000.csv",
+    "check": "python3 scripts/check_site.py"
   }
 }

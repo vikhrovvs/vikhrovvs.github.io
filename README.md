@@ -8,11 +8,15 @@
 site/
 ├── index.html          # главная страница
 ├── home.css
-└── anagrams/           # Словограф
+├── anagrams/           # Словограф и общие данные графа
+│   ├── index.html
+│   ├── styles.css
+│   ├── app.js
+│   └── data/graph.json
+└── word-route/         # ежедневная игра на том же графе
     ├── index.html
     ├── styles.css
-    ├── app.js
-    └── data/graph.json
+    └── app.js
 ```
 
 Чтобы добавить проект, создайте новую папку в `site/` и добавьте карточку-ссылку на главную страницу.
@@ -27,6 +31,17 @@ python3 -m http.server 4173 --directory site
 
 - главная: http://localhost:4173/
 - Словограф: http://localhost:4173/anagrams/
+- Словесный маршрут: http://localhost:4173/word-route/
+
+## Проверка
+
+```bash
+python3 scripts/check_site.py
+```
+
+Команда проверяет структуру сайта, локальные ссылки и инварианты `graph.json`. Если установлен npm, доступен эквивалентный алиас `npm run check`.
+
+Инструкции для Codex находятся в `AGENTS.md`, а устойчивый контекст проекта — в `MEMORY.md`.
 
 ## Публикация
 

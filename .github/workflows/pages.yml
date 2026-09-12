@@ -23,6 +23,11 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: actions/configure-pages@v5
+      - name: Validate static site
+        run: |
+          python3 scripts/check_site.py
+          node --check site/anagrams/app.js
+          node --check site/word-route/app.js
       - uses: actions/upload-pages-artifact@v4
         with:
           path: site
