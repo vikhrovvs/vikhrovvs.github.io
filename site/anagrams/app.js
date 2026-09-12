@@ -9,6 +9,7 @@ const visibleCount = document.querySelector('#visible-count');
 const searchStatus = document.querySelector('#search-status');
 const tooltip = document.querySelector('#tooltip');
 const toast = document.querySelector('#toast');
+const anagramLeadersList = document.querySelector('#anagram-leaders-list');
 
 const state = {
   data: null,
@@ -25,6 +26,9 @@ const state = {
   pointer: null,
   dragDistance: 0,
   animation: 0,
+  anagramLeaders: [],
+  anagramLeaderCursor: 0,
+  anagramLeaderTimer: 0,
 };
 
 const COLORS = {
@@ -90,6 +94,74 @@ function buildIndexes() {
     state.adjacency[a].push([b, type]);
     state.adjacency[b].push([a, type]);
   });
+}
+
+function wordForm(value, forms) {
+  const modulo100 = value % 100;
+  const modulo10 = value % 10;
+  if (modulo100 >= 11 && modulo100 <= 14) return forms[2];
+  if (modulo10 === 1) return forms[0];
+  if (modulo10 >= 2 && modulo10 <= 4) return forms[1];
+  return forms[2];
+}
+
+function randomAlternative(items, current) {
+  const alternatives = items.filter((item) => item.nodeIndex !== current?.nodeIndex || item.word !== current?.word);
+  const pool = alternatives.length ? alternatives : items;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+function updateAnagramLeader(entry) {
+  entry.current = randomAlternative(entry.samples, entry.current);
+  const button = anagramLeadersList.querySelector(`[data-length="${entry.length}"]`);
+  if (!button) return;
+  button.dataset.node = entry.current.nodeIndex;
+  button.dataset.word = entry.current.word;
+  button.setAttribute('aria-label', `${entry.length} ${wordForm(entry.length, ['буква', 'буквы', 'букв'])}, ${entry.count} ${wordForm(entry.count, ['слово', 'слова', 'слов'])}: ${entry.current.word}`);
+  const word = button.querySelector('.leader-word');
+  word.classList.remove('is-changing');
+  void word.offsetWidth;
+  word.textContent = entry.current.word;
+  word.classList.add('is-changing');
+}
+
+function buildAnagramLeaders() {
+  const byLength = new Map();
+  state.nodes.forEach((node, nodeIndex) => {
+    if (node.words.length < 2 || node.added) return;
+    const length = Array.from(node.id).length;
+    if (!byLength.has(length)) byLength.set(length, []);
+    byLength.get(length).push({
+      nodeIndex,
+      count: node.words.length,
+      words: node.words.map(([word]) => word),
+    });
+  });
+
+  state.anagramLeaders = [...byLength]
+    .sort(([first], [second]) => first - second)
+    .map(([length, groups]) => {
+      const count = Math.max(...groups.map((group) => group.count));
+      const samples = groups
+        .filter((group) => group.count === count)
+        .flatMap((group) => group.words.map((word) => ({ nodeIndex: group.nodeIndex, word })));
+      return { length, count, samples, current: randomAlternative(samples) };
+    });
+
+  anagramLeadersList.innerHTML = state.anagramLeaders.map((entry) => `
+    <button class="leader-item" type="button" data-length="${entry.length}" data-node="${entry.current.nodeIndex}" data-word="${escapeHtml(entry.current.word)}" aria-label="${entry.length} ${wordForm(entry.length, ['буква', 'буквы', 'букв'])}, ${entry.count} ${wordForm(entry.count, ['слово', 'слова', 'слов'])}: ${escapeHtml(entry.current.word)}">
+      <span class="leader-stat"><strong>${entry.length}</strong> ${wordForm(entry.length, ['буква', 'буквы', 'букв'])} · <strong>${entry.count}</strong> ${wordForm(entry.count, ['слово', 'слова', 'слов'])}</span>
+      <span class="leader-word">${escapeHtml(entry.current.word)}</span>
+      <span class="leader-arrow" aria-hidden="true">↗</span>
+    </button>`).join('');
+
+  clearInterval(state.anagramLeaderTimer);
+  state.anagramLeaderTimer = window.setInterval(() => {
+    if (!state.anagramLeaders.length || document.hidden || anagramLeadersList.matches(':hover') || anagramLeadersList.contains(document.activeElement)) return;
+    const entry = state.anagramLeaders[state.anagramLeaderCursor % state.anagramLeaders.length];
+    state.anagramLeaderCursor += 1;
+    updateAnagramLeader(entry);
+  }, 1800);
 }
 
 function createNeighborhood(centerIndex) {
@@ -553,6 +625,12 @@ canvas.addEventListener('pointercancel', () => { state.pointer = null; });
 canvas.addEventListener('pointerleave', () => { if (!state.pointer) { state.hovered = -1; tooltip.hidden = true; draw(); } });
 
 searchForm.addEventListener('submit', (event) => { event.preventDefault(); submitWord(wordInput.value); });
+anagramLeadersList.addEventListener('click', (event) => {
+  const button = event.target.closest('.leader-item');
+  if (!button) return;
+  selectNode(Number(button.dataset.node), true);
+  wordInput.value = button.dataset.word;
+});
 wordInput.addEventListener('input', updateSuggestions);
 wordInput.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') { suggestions.hidden = true; wordInput.blur(); }
@@ -579,6 +657,7 @@ async function initialize() {
     state.nodes = state.data.nodes;
     state.edges = state.data.edges;
     buildIndexes();
+    buildAnagramLeaders();
     const defaultIndex = state.wordIndex.get('кот') ?? 0;
     selectNode(defaultIndex, true);
     loading.classList.add('is-hidden');

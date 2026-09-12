@@ -29,6 +29,17 @@
       </header>
 
       <main class="workspace">
+        <aside class="anagram-leaders" aria-labelledby="anagram-leaders-title">
+          <div class="leaders-head">
+            <p>Рекорды по длине</p>
+            <h2 id="anagram-leaders-title">Самые анаграммные</h2>
+            <small>Примеры меняются</small>
+          </div>
+          <div class="leaders-list" id="anagram-leaders-list">
+            <span class="leaders-placeholder">Считаем рекорды…</span>
+          </div>
+        </aside>
+
         <section class="graph-stage" aria-label="Интерактивный граф анаграмм">
           <canvas id="graph-canvas" tabindex="0" aria-label="Граф. Перетаскивайте, масштабируйте колесом и выбирайте вершины кликом."></canvas>
           <div class="loading" id="loading" role="status">
