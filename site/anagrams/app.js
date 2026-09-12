@@ -171,6 +171,47 @@ function settleLayout() {
     });
     if (nodes[0]) { nodes[0].x *= .82; nodes[0].y *= .82; }
   }
+  separateOverlappingNodes(nodes);
+}
+
+function separateOverlappingNodes(nodes) {
+  for (let step = 0; step < 80; step += 1) {
+    let largestOverlap = 0;
+    for (let i = 0; i < nodes.length; i += 1) {
+      for (let j = i + 1; j < nodes.length; j += 1) {
+        const node = nodes[i];
+        const other = nodes[j];
+        let dx = other.x - node.x;
+        let dy = other.y - node.y;
+        let distance = Math.hypot(dx, dy);
+        if (distance < .001) {
+          const angle = (i * 2.399 + j * 1.618) % (Math.PI * 2);
+          dx = Math.cos(angle);
+          dy = Math.sin(angle);
+          distance = 1;
+        }
+        const overlap = node.radius + other.radius + 12 - distance;
+        if (overlap <= 0) continue;
+        largestOverlap = Math.max(largestOverlap, overlap);
+        const directionX = dx / distance;
+        const directionY = dy / distance;
+        if (node.level === 0) {
+          other.x += directionX * overlap;
+          other.y += directionY * overlap;
+        } else if (other.level === 0) {
+          node.x -= directionX * overlap;
+          node.y -= directionY * overlap;
+        } else {
+          const push = overlap * .51;
+          node.x -= directionX * push;
+          node.y -= directionY * push;
+          other.x += directionX * push;
+          other.y += directionY * push;
+        }
+      }
+    }
+    if (largestOverlap < .05) break;
+  }
 }
 
 function resizeCanvas() {
