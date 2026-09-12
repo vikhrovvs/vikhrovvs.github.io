@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#11130f" />
+    <meta name="description" content="Ежедневная игра: проложите маршрут между русскими словами, меняя или добавляя одну букву." />
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2311130f'/%3E%3Ccircle cx='8' cy='22' r='4' fill='%23d8ff43'/%3E%3Ccircle cx='24' cy='8' r='4' fill='%23f3f0e8'/%3E%3Cpath d='M11 19 21 11' stroke='%2393b8ff' stroke-width='2' stroke-dasharray='3 2'/%3E%3C/svg%3E" />
+    <title>Словесный маршрут</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="../" aria-label="Вернуться к проектам">
+          <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span>Словесный маршрут</span>
+        </a>
+        <nav aria-label="Навигация">
+          <a href="../anagrams/">Словограф</a>
+          <button id="open-setup" type="button">Своя игра</button>
+        </nav>
+      </header>
+
+      <main class="game" id="game" aria-live="polite">
+        <section class="loading" id="loading" role="status">
+          <span class="loading-route" aria-hidden="true"><i></i><i></i><i></i></span>
+          <strong>Ищем маршрут на сегодня</strong>
+          <small>Загружается словарь</small>
+        </section>
+
+        <aside class="route-panel" id="route-panel" hidden>
+          <div class="panel-heading">
+            <p id="mode-label">Игра дня</p>
+            <h1>Ваш путь</h1>
+          </div>
+          <ol class="route-list" id="route-list"></ol>
+          <div class="route-actions">
+            <button class="secondary-button" id="undo" type="button">← Отменить ход</button>
+            <button class="text-button" id="restart" type="button">Начать заново</button>
+          </div>
+        </aside>
+
+        <section class="playfield" id="playfield" hidden>
+          <div class="mission">
+            <div class="endpoint start-endpoint">
+              <span>Старт</span>
+              <strong id="start-word">—</strong>
+            </div>
+            <div class="mission-line" aria-hidden="true"><i></i></div>
+            <div class="endpoint target-endpoint">
+              <span>Цель</span>
+              <strong id="target-word">—</strong>
+            </div>
+          </div>
+
+          <article class="current-card">
+            <p>Сейчас вы здесь</p>
+            <h2 id="current-word">—</h2>
+            <div class="anagrams" id="current-anagrams"></div>
+          </article>
+
+          <div class="neighbors-head">
+            <div>
+              <p>Один шаг</p>
+              <h2>Куда дальше?</h2>
+            </div>
+            <span id="neighbor-count">—</span>
+          </div>
+          <div class="neighbors" id="neighbors"></div>
+        </section>
+
+        <aside class="rules-panel" id="rules-panel" hidden>
+          <div>
+            <p class="rules-kicker">Правило</p>
+            <h2>Меняйте или добавляйте одну букву</h2>
+            <p>Порядок букв не важен: анаграммы живут в одной карточке.</p>
+          </div>
+          <div class="daily-meta">
+            <span id="daily-date">—</span>
+            <button class="copy-button" id="copy-link" type="button">Копировать ссылку</button>
+          </div>
+        </aside>
+      </main>
+    </div>
+
+    <dialog class="setup-dialog" id="setup-dialog">
+      <div class="dialog-shell">
+        <div class="dialog-head">
+          <div><p>Настройка</p><h2>Своя игра</h2></div>
+          <button class="close-button" id="close-setup" type="button" aria-label="Закрыть">×</button>
+        </div>
+        <section class="setup-section">
+          <h3>Из слова в слово</h3>
+          <div class="field-row">
+            <label>Откуда<input id="from-input" name="from" autocomplete="off" maxlength="24" placeholder="кот" /></label>
+            <span aria-hidden="true">→</span>
+            <label>Куда<input id="to-input" name="to" autocomplete="off" maxlength="24" placeholder="дом" /></label>
+          </div>
+          <button class="primary-button" id="start-custom" type="button">Построить игру</button>
+          <p class="form-status" id="custom-status" role="status"></p>
+        </section>
+        <div class="setup-divider"><span>или</span></div>
+        <section class="setup-section">
+          <h3>Случайный маршрут</h3>
+          <label class="distance-field">Расстояние между словами
+            <input id="distance-input" type="number" min="1" max="12" value="6" inputmode="numeric" />
+          </label>
+          <button class="secondary-button full-button" id="start-random" type="button">Выбрать случайные слова</button>
+          <p class="form-status" id="random-status" role="status"></p>
+        </section>
+      </div>
+    </dialog>
+
+    <dialog class="finish-dialog" id="finish-dialog">
+      <div class="finish-shell">
+        <p class="finish-kicker">Маршрут найден</p>
+        <h2 id="finish-title">Финиш!</h2>
+        <p class="finish-score" id="finish-score"></p>
+        <div class="shortest-route" id="shortest-route"></div>
+        <div class="finish-actions">
+          <button class="primary-button" id="finish-share" type="button">Копировать ссылку</button>
+          <button class="secondary-button" id="finish-restart" type="button">Сыграть ещё раз</button>
+          <button class="text-button" id="finish-close" type="button">Посмотреть поле</button>
+        </div>
+      </div>
+    </dialog>
+
+    <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
