@@ -37,6 +37,11 @@ const COLORS = {
   replace: '#93b8ff',
 };
 
+const NEIGHBORHOOD_LIMITS = {
+  firstRing: 24,
+  total: 72,
+};
+
 const normalizeWord = (value) => value.trim().toLocaleLowerCase('ru-RU').normalize('NFC');
 const signature = (word) => Array.from(word).sort((a, b) => a.localeCompare(b, 'ru')).join('');
 const formatIpm = (value) => new Intl.NumberFormat('ru-RU', { maximumFractionDigits: value < 10 ? 2 : 0 }).format(value);
@@ -91,7 +96,7 @@ function createNeighborhood(centerIndex) {
   const levels = new Map([[centerIndex, 0]]);
   const first = [...state.adjacency[centerIndex]]
     .sort((a, b) => state.nodes[b[0]].frequency - state.nodes[a[0]].frequency)
-    .slice(0, 18);
+    .slice(0, NEIGHBORHOOD_LIMITS.firstRing);
 
   first.forEach(([index]) => { included.add(index); levels.set(index, 1); });
   const secondCandidates = [];
@@ -102,7 +107,7 @@ function createNeighborhood(centerIndex) {
   });
   [...new Set(secondCandidates)]
     .sort((a, b) => state.nodes[b].frequency - state.nodes[a].frequency)
-    .slice(0, Math.max(0, 52 - included.size))
+    .slice(0, Math.max(0, NEIGHBORHOOD_LIMITS.total - included.size))
     .forEach((index) => { included.add(index); levels.set(index, 2); });
 
   const visible = [...included];
@@ -112,7 +117,7 @@ function createNeighborhood(centerIndex) {
     const level = levels.get(index);
     const levelNodes = visible.filter((candidate) => levels.get(candidate) === level);
     const levelOrder = levelNodes.indexOf(index);
-    const radius = level === 0 ? 0 : level === 1 ? 230 : 410;
+    const radius = level === 0 ? 0 : level === 1 ? 245 : 470;
     const angle = angleOffset + (levelOrder / Math.max(1, levelNodes.length)) * Math.PI * 2 + level * .22;
     return {
       index,
@@ -135,7 +140,7 @@ function createNeighborhood(centerIndex) {
 
 function settleLayout() {
   const nodes = state.visibleNodes;
-  for (let step = 0; step < 110; step += 1) {
+  for (let step = 0; step < 130; step += 1) {
     for (let i = 0; i < nodes.length; i += 1) {
       const node = nodes[i];
       node.x += (node.targetX - node.x) * .018;
