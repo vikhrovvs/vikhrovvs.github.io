@@ -115,7 +115,11 @@ button { color: inherit; }
 .details { position: relative; z-index: 5; overflow: auto; padding: 1.6rem 1.4rem 2rem; border-left: 1px solid var(--line); background: var(--panel); }
 .details-handle { display: none; }
 .details-kicker { margin: 0 0 1.5rem; color: #7f877a; font-size: .7rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+.details-title-row { display: flex; align-items: flex-start; justify-content: space-between; gap: .7rem; }
 .details h1 { margin: 0; color: var(--paper); font: 600 clamp(2.4rem, 4vw, 3.8rem)/.96 var(--display); letter-spacing: -.065em; text-transform: lowercase; }
+.copy-link-button { flex: 0 0 auto; display: grid; place-items: center; width: 34px; height: 34px; margin-top: .15rem; border: 1px solid #3f463a; border-radius: 9px; background: #20241d; color: #858d80; cursor: pointer; }
+.copy-link-button:hover { border-color: #667344; color: var(--accent); }
+.copy-link-button svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; }
 .signature { margin: .65rem 0 1.5rem; color: #7f877a; font-size: .75rem; letter-spacing: .16em; }
 .details-placeholder { color: var(--muted); line-height: 1.5; }
 .frequency-card { display: grid; grid-template-columns: 1fr auto; gap: .4rem 1rem; margin: 0 0 1.5rem; padding: 1rem; border: 1px solid #373c33; border-radius: 14px; background: var(--panel-2); }

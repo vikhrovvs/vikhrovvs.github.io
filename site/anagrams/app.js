@@ -38,6 +38,8 @@ const state = {
   pathMessage: '',
   neighborhoodDepth: 2,
   neighborhoodLimit: 72,
+  dictionaryWords: new Set(),
+  selectedWord: '',
 };
 
 const COLORS = {
@@ -93,10 +95,14 @@ function buildIndexes() {
   state.adjacency = Array.from({ length: state.nodes.length }, () => []);
   state.wordIndex.clear();
   state.signatureIndex.clear();
+  state.dictionaryWords.clear();
 
   state.nodes.forEach((node, index) => {
     state.signatureIndex.set(node.id, index);
-    node.words.forEach(([word]) => state.wordIndex.set(word, index));
+    node.words.forEach(([word]) => {
+      state.wordIndex.set(word, index);
+      state.dictionaryWords.add(word);
+    });
   });
   state.edges.forEach(([a, b, type]) => {
     state.adjacency[a].push([b, type]);
@@ -558,7 +564,12 @@ function showDetails(index) {
     .sort((a, b) => state.nodes[b[0]].frequency - state.nodes[a[0]].frequency)
     .slice(0, 12);
   detailsContent.innerHTML = `
-    <h1>${escapeHtml(node.label)}</h1>
+    <div class="details-title-row">
+      <h1>${escapeHtml(node.label)}</h1>
+      ${node.added ? '' : `<button class="copy-link-button" id="copy-word-link" type="button" aria-label="Скопировать ссылку на слово «${escapeHtml(state.selectedWord)}»" title="Скопировать ссылку">
+        <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.5.5l2-2a5 5 0 0 0-7-7l-1.1 1.1M14 11a5 5 0 0 0-7.5-.5l-2 2a5 5 0 0 0 7 7l1.1-1.1"></path></svg>
+      </button>`}
+    </div>
     <p class="signature" title="Отсортированный набор букв">${escapeHtml(node.id.split('').join(' · '))}</p>
     <div class="frequency-card">
       <span>Суммарная частота</span>
@@ -597,6 +608,7 @@ function showDetails(index) {
   detailsContent.querySelectorAll('[data-path-node]').forEach((button) => {
     button.addEventListener('click', () => selectNode(Number(button.dataset.pathNode), true));
   });
+  detailsContent.querySelector('#copy-word-link')?.addEventListener('click', copySelectedWordLink);
 }
 
 function pathResultMarkup(startIndex) {
@@ -640,7 +652,30 @@ function showWordPath(startIndex, rawTarget) {
   showDetails(startIndex);
 }
 
-function selectNode(index, rebuild = true) {
+function wordUrl(word) {
+  const url = new URL(window.location.href);
+  url.searchParams.set('word', word);
+  return url;
+}
+
+function updateWordUrl(word, mode) {
+  if (mode === 'none' || !state.dictionaryWords.has(word)) return;
+  const url = wordUrl(word);
+  if (url.href === window.location.href) return;
+  window.history[mode === 'replace' ? 'replaceState' : 'pushState']({ word }, '', url);
+}
+
+async function copySelectedWordLink() {
+  const stableWord = state.dictionaryWords.has(state.selectedWord) ? state.selectedWord : state.nodes[state.selected].label;
+  try {
+    await navigator.clipboard.writeText(wordUrl(stableWord).href);
+    showToast(`Ссылка на «${stableWord}» скопирована`);
+  } catch {
+    showToast('Не удалось скопировать ссылку');
+  }
+}
+
+function selectNode(index, rebuild = true, requestedWord = null, historyMode = 'push') {
   state.selected = index;
   state.hovered = -1;
   if (rebuild) {
@@ -649,10 +684,13 @@ function selectNode(index, rebuild = true) {
     state.pathMessage = '';
     createNeighborhood(index);
   }
-  showDetails(index);
   const node = state.nodes[index];
-  wordInput.value = node.label;
+  const matchingWord = requestedWord && node.words.some(([word]) => word === requestedWord) ? requestedWord : node.label;
+  state.selectedWord = matchingWord;
+  showDetails(index);
+  wordInput.value = matchingWord;
   searchStatus.textContent = node.added ? 'Временная вершина' : `Есть в словаре · ${node.words.length} ${node.words.length === 1 ? 'слово' : 'слова'}`;
+  updateWordUrl(matchingWord, historyMode);
   draw();
 }
 
@@ -670,7 +708,7 @@ function addWord(word) {
     const node = state.nodes[existing];
     node.words.push([word, 0]);
     state.wordIndex.set(word, existing);
-    selectNode(existing, true);
+    selectNode(existing, true, node.label);
     showToast(`«${word}» добавлено в существующую вершину-анаграмму`);
     return existing;
   }
@@ -705,7 +743,7 @@ function submitWord(rawWord) {
   }
   const existing = state.wordIndex.get(word);
   if (existing !== undefined) {
-    selectNode(existing, true);
+    selectNode(existing, true, word);
     return existing;
   }
   return addWord(word);
@@ -793,8 +831,7 @@ searchForm.addEventListener('submit', (event) => { event.preventDefault(); submi
 anagramLeadersPanel.addEventListener('click', (event) => {
   const button = event.target.closest('.leader-item');
   if (!button) return;
-  selectNode(Number(button.dataset.node), true);
-  wordInput.value = button.dataset.word;
+  selectNode(Number(button.dataset.node), true, button.dataset.word);
 });
 wordInput.addEventListener('input', updateSuggestions);
 wordInput.addEventListener('keydown', (event) => {
@@ -853,15 +890,25 @@ async function initialize() {
     state.edges = state.data.edges;
     buildIndexes();
     buildAnagramLeaders();
-    const defaultIndex = state.wordIndex.get('кот') ?? 0;
-    selectNode(defaultIndex, true);
+    const requestedWord = normalizeWord(new URL(window.location.href).searchParams.get('word') ?? '');
+    const requestedIndex = state.wordIndex.get(requestedWord);
+    const defaultIndex = requestedIndex ?? state.wordIndex.get('кот') ?? 0;
+    selectNode(defaultIndex, true, requestedIndex === undefined ? state.nodes[defaultIndex].label : requestedWord, 'replace');
     loading.classList.add('is-hidden');
     setTimeout(() => { loading.hidden = true; }, 350);
+    if (requestedWord && requestedIndex === undefined) showToast(`«${requestedWord}» нет в словаре — открыт «${state.nodes[defaultIndex].label}»`);
     registerWebMcp();
   } catch (error) {
     loading.innerHTML = `<strong>Не удалось загрузить словарь</strong><small>Откройте сайт через локальный сервер или GitHub Pages.</small>`;
     console.error(error);
   }
 }
+
+window.addEventListener('popstate', () => {
+  if (!state.data) return;
+  const word = normalizeWord(new URL(window.location.href).searchParams.get('word') ?? '');
+  const index = state.wordIndex.get(word);
+  if (index !== undefined) selectNode(index, true, word, 'none');
+});
 
 initialize();
