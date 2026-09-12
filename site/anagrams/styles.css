@@ -89,6 +89,11 @@ button { color: inherit; }
 .stage-meta { position: absolute; top: 18px; left: 20px; display: flex; align-items: center; gap: .7rem; color: #aab1a2; font-size: .78rem; pointer-events: none; }
 .stage-meta span:first-child { color: var(--paper); font-weight: 600; }
 .meta-divider { width: 3px; height: 3px; border-radius: 50%; background: #596052; }
+.minimap { position: absolute; z-index: 7; top: 18px; right: 20px; width: 158px; padding: .45rem .5rem .5rem; border: 1px solid #3d4439; border-radius: 12px; background: rgba(25,29,23,.8); color: #737b6f; text-align: left; opacity: .72; cursor: crosshair; backdrop-filter: blur(10px); transition: opacity .18s ease, border-color .18s ease; }
+.minimap:hover, .minimap:focus-visible { border-color: #58614f; outline: 0; opacity: 1; }
+.minimap:focus-visible { box-shadow: 0 0 0 2px rgba(216,255,67,.14); }
+.minimap span { display: block; margin: 0 0 .28rem .1rem; font-size: .58rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+#minimap-canvas { display: block; width: 140px; height: 88px; border-radius: 7px; background: rgba(13,15,12,.52); }
 .graph-controls { position: absolute; left: 20px; bottom: 22px; display: flex; overflow: hidden; border: 1px solid var(--line); border-radius: 12px; background: rgba(31,35,28,.9); backdrop-filter: blur(12px); }
 .graph-controls button { display: grid; place-items: center; width: 42px; height: 40px; border: 0; border-right: 1px solid var(--line); background: transparent; color: #c7ccc1; font-size: 1.25rem; cursor: pointer; }
 .graph-controls button:last-child { border-right: 0; }
@@ -194,6 +199,8 @@ button { color: inherit; }
   .graph-controls { left: 12px; bottom: calc(34svh + 13px); }
   .neighborhood-popover { left: 12px; bottom: calc(34svh + 65px); }
   .stage-meta { left: 12px; top: 12px; }
+  .minimap { top: 238px; right: 12px; width: 126px; }
+  #minimap-canvas { width: 108px; height: 68px; }
 }
 
 @media (max-width: 540px) {
@@ -215,6 +222,7 @@ button { color: inherit; }
   .stage-meta { max-width: calc(100% - 24px); flex-wrap: wrap; gap: .4rem; }
   .meta-divider { display: none; }
   .stage-meta span:last-child { width: 100%; }
+  .minimap { top: 300px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

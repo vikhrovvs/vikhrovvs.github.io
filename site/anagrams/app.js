@@ -14,6 +14,9 @@ const leadersBySize = document.querySelector('#leaders-by-size');
 const leadersByLength = document.querySelector('#leaders-by-length');
 const neighborhoodButton = document.querySelector('#neighborhood-button');
 const neighborhoodPopover = document.querySelector('#neighborhood-popover');
+const minimapButton = document.querySelector('#minimap-button');
+const minimapCanvas = document.querySelector('#minimap-canvas');
+const minimapContext = minimapCanvas.getContext('2d');
 
 const state = {
   data: null,
@@ -40,6 +43,7 @@ const state = {
   neighborhoodLimit: 72,
   dictionaryWords: new Set(),
   selectedWord: '',
+  minimapTransform: null,
 };
 
 const COLORS = {
@@ -438,6 +442,70 @@ function draw() {
     .sort((a, b) => b.level - a.level)
     .forEach((layoutNode) => drawNode(layoutNode));
   context.restore();
+  drawMinimap();
+}
+
+function drawMinimap() {
+  const mapBounds = minimapCanvas.getBoundingClientRect();
+  if (!mapBounds.width || !mapBounds.height) return;
+  const ratio = Math.min(window.devicePixelRatio || 1, 2);
+  const pixelWidth = Math.round(mapBounds.width * ratio);
+  const pixelHeight = Math.round(mapBounds.height * ratio);
+  if (minimapCanvas.width !== pixelWidth || minimapCanvas.height !== pixelHeight) {
+    minimapCanvas.width = pixelWidth;
+    minimapCanvas.height = pixelHeight;
+  }
+  minimapContext.setTransform(ratio, 0, 0, ratio, 0, 0);
+  minimapContext.clearRect(0, 0, mapBounds.width, mapBounds.height);
+  if (!state.visibleNodes.length) return;
+
+  const padding = 9;
+  const minX = Math.min(...state.visibleNodes.map((node) => node.x - node.radius)) - 20;
+  const maxX = Math.max(...state.visibleNodes.map((node) => node.x + node.radius)) + 20;
+  const minY = Math.min(...state.visibleNodes.map((node) => node.y - node.radius)) - 20;
+  const maxY = Math.max(...state.visibleNodes.map((node) => node.y + node.radius)) + 20;
+  const worldWidth = Math.max(1, maxX - minX);
+  const worldHeight = Math.max(1, maxY - minY);
+  const scale = Math.min((mapBounds.width - padding * 2) / worldWidth, (mapBounds.height - padding * 2) / worldHeight);
+  const offsetX = (mapBounds.width - worldWidth * scale) / 2;
+  const offsetY = (mapBounds.height - worldHeight * scale) / 2;
+  const mapX = (value) => offsetX + (value - minX) * scale;
+  const mapY = (value) => offsetY + (value - minY) * scale;
+  state.minimapTransform = { minX, minY, scale, offsetX, offsetY };
+
+  state.visibleEdges.forEach((edge) => {
+    const first = state.visibleNodes[edge.a];
+    const second = state.visibleNodes[edge.b];
+    minimapContext.beginPath();
+    minimapContext.moveTo(mapX(first.x), mapY(first.y));
+    minimapContext.lineTo(mapX(second.x), mapY(second.y));
+    minimapContext.strokeStyle = edge.isPath ? COLORS.selected : '#60685b';
+    minimapContext.globalAlpha = edge.isPath ? .72 : .24;
+    minimapContext.lineWidth = edge.isPath ? 1.4 : .7;
+    minimapContext.stroke();
+  });
+
+  state.visibleNodes.forEach((node) => {
+    minimapContext.beginPath();
+    minimapContext.arc(mapX(node.x), mapY(node.y), node.index === state.selected ? 2.8 : 1.7, 0, Math.PI * 2);
+    minimapContext.fillStyle = node.index === state.selected ? COLORS.selected : '#b0b7aa';
+    minimapContext.globalAlpha = node.index === state.selected ? 1 : .66;
+    minimapContext.fill();
+  });
+
+  const graphBounds = canvas.getBoundingClientRect();
+  const viewportLeft = (-graphBounds.width / 2 - state.camera.x) / state.camera.scale;
+  const viewportRight = (graphBounds.width / 2 - state.camera.x) / state.camera.scale;
+  const viewportTop = (-graphBounds.height / 2 - state.camera.y) / state.camera.scale;
+  const viewportBottom = (graphBounds.height / 2 - state.camera.y) / state.camera.scale;
+  const left = Math.min(mapBounds.width - 1, Math.max(1, mapX(viewportLeft)));
+  const right = Math.min(mapBounds.width - 1, Math.max(1, mapX(viewportRight)));
+  const top = Math.min(mapBounds.height - 1, Math.max(1, mapY(viewportTop)));
+  const bottom = Math.min(mapBounds.height - 1, Math.max(1, mapY(viewportBottom)));
+  minimapContext.globalAlpha = 1;
+  minimapContext.strokeStyle = COLORS.selected;
+  minimapContext.lineWidth = 1;
+  minimapContext.strokeRect(left, top, Math.max(0, right - left), Math.max(0, bottom - top));
 }
 
 function drawNode(layoutNode) {
@@ -842,6 +910,24 @@ document.addEventListener('click', (event) => { if (!searchForm.contains(event.t
 document.querySelector('#zoom-in').addEventListener('click', () => zoomAt(1.22, canvas.clientWidth / 2, canvas.clientHeight / 2));
 document.querySelector('#zoom-out').addEventListener('click', () => zoomAt(.82, canvas.clientWidth / 2, canvas.clientHeight / 2));
 document.querySelector('#fit-view').addEventListener('click', fitView);
+minimapButton.addEventListener('click', (event) => {
+  if (!state.minimapTransform || !state.visibleNodes.length) return;
+  if (event.detail === 0) {
+    const selected = state.visibleNodes.find((node) => node.index === state.selected) ?? state.visibleNodes[0];
+    state.camera.x = -selected.x * state.camera.scale;
+    state.camera.y = -selected.y * state.camera.scale;
+    draw();
+    return;
+  }
+  const bounds = minimapCanvas.getBoundingClientRect();
+  if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) return;
+  const { minX, minY, scale, offsetX, offsetY } = state.minimapTransform;
+  const worldX = minX + (event.clientX - bounds.left - offsetX) / scale;
+  const worldY = minY + (event.clientY - bounds.top - offsetY) / scale;
+  state.camera.x = -worldX * state.camera.scale;
+  state.camera.y = -worldY * state.camera.scale;
+  draw();
+});
 
 function updateNeighborhoodControls() {
   neighborhoodPopover.querySelectorAll('[data-depth]').forEach((button) => {
