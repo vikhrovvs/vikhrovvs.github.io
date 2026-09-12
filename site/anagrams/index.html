@@ -25,7 +25,10 @@
           <div class="suggestions" id="suggestions" role="listbox" hidden></div>
         </form>
 
-        <button class="about-button" id="about-button" type="button" aria-expanded="false" aria-controls="about-popover">Как читать граф</button>
+        <div class="top-actions">
+          <a class="game-link" href="../word-route/">Играть</a>
+          <button class="about-button" id="about-button" type="button" aria-expanded="false" aria-controls="about-popover">Как читать граф</button>
+        </div>
       </header>
 
       <main class="workspace">
@@ -127,6 +130,7 @@
         <p>Одна вершина объединяет слова с одинаковым набором букв. Ребро появляется, если набор можно получить заменой или добавлением одной буквы.</p>
         <p>Показывается локальное окружение выбранной вершины. Новое слово добавляется временно — только до перезагрузки страницы.</p>
         <p class="source-note">Частоты: DetCorpus, ipm, CC0. База — 20&nbsp;000 наиболее частотных русских лемм.</p>
+        <a class="about-game-link" href="../word-route/">Сыграть в «Словесный маршрут» →</a>
       </div>
 
       <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>

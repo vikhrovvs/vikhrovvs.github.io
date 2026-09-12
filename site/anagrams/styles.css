@@ -48,7 +48,10 @@ button { color: inherit; }
 .suggestions button { display: flex; justify-content: space-between; width: 100%; height: auto; margin: 0; padding: .65rem .75rem; border-radius: 8px; background: transparent; color: var(--paper); text-align: left; }
 .suggestions button:hover, .suggestions button:focus-visible { background: #30362b; outline: none; }
 .suggestions small { color: var(--muted); }
-.about-button { justify-self: end; padding: .55rem .8rem; border: 0; border-bottom: 1px solid #596050; background: transparent; color: #b9c0b2; font-size: .82rem; cursor: pointer; }
+.top-actions { justify-self: end; display: flex; align-items: center; gap: .65rem; }
+.game-link { padding: .55rem .8rem; border: 1px solid #526044; border-radius: 8px; color: var(--accent); font-size: .78rem; font-weight: 700; text-decoration: none; }
+.game-link:hover { background: #252a21; border-color: var(--accent); }
+.about-button { padding: .55rem .8rem; border: 0; border-bottom: 1px solid #596050; background: transparent; color: #b9c0b2; font-size: .82rem; cursor: pointer; }
 .about-button:hover { color: var(--paper); border-color: var(--accent); }
 
 .workspace { position: relative; display: grid; grid-template-columns: 280px minmax(0, 1fr) 320px; height: calc(100svh - 76px); }
@@ -164,6 +167,7 @@ button { color: inherit; }
 .about-head button { width: 30px; height: 30px; border: 0; border-radius: 7px; background: #30362b; color: var(--muted); font-size: 1.15rem; cursor: pointer; }
 .about-popover p { color: #b4bbad; font-size: .82rem; line-height: 1.55; }
 .about-popover .source-note { margin-bottom: 0; color: #7f8779; font-size: .72rem; }
+.about-game-link { display: block; margin-top: 1rem; padding-top: .85rem; border-top: 1px solid #3c4338; color: var(--accent); font-size: .76rem; font-weight: 700; text-decoration: none; }
 .toast { position: fixed; z-index: 80; left: 50%; bottom: 28px; translate: -50% 0; padding: .75rem 1rem; border: 1px solid #505744; border-radius: 10px; background: #252a21; box-shadow: 0 14px 40px rgba(0,0,0,.35); color: var(--paper); font-size: .82rem; }
 
 @media (max-width: 900px) {
@@ -204,7 +208,9 @@ button { color: inherit; }
 }
 
 @media (max-width: 540px) {
-  .topbar { grid-template-columns: 30px minmax(0, 1fr) 34px; }
+  .topbar { grid-template-columns: 30px minmax(0, 1fr) auto; }
+  .top-actions { gap: .35rem; }
+  .game-link { padding: .52rem .6rem; font-size: .7rem; }
   .search { height: 43px; }
   .search button { padding: 0 .75rem; }
   .search input { font-size: .86rem; }
