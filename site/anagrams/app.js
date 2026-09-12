@@ -41,6 +41,7 @@ const NEIGHBORHOOD_LIMITS = {
   firstRing: 24,
   total: 72,
 };
+const MAX_ZOOM = 4;
 
 const normalizeWord = (value) => value.trim().toLocaleLowerCase('ru-RU').normalize('NFC');
 const signature = (word) => Array.from(word).sort((a, b) => a.localeCompare(b, 'ru')).join('');
@@ -308,7 +309,7 @@ function fitView() {
 function zoomAt(factor, x, y) {
   const bounds = canvas.getBoundingClientRect();
   const oldScale = state.camera.scale;
-  const newScale = Math.max(.25, Math.min(2.4, oldScale * factor));
+  const newScale = Math.max(.25, Math.min(MAX_ZOOM, oldScale * factor));
   const worldX = (x - bounds.width / 2 - state.camera.x) / oldScale;
   const worldY = (y - bounds.height / 2 - state.camera.y) / oldScale;
   state.camera.scale = newScale;
