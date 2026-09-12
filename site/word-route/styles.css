@@ -2,6 +2,7 @@
 
 :root { --ink:#11130f; --panel:#191c17; --panel-2:#20241d; --line:#343a30; --muted:#8f9789; --paper:#f3f0e8; --accent:#d8ff43; --blue:#93b8ff; --orange:#ffb56b; --font:'Manrope',system-ui,sans-serif; --display:'Onest',var(--font); }
 * { box-sizing:border-box; }
+[hidden] { display:none !important; }
 html { min-width:320px; min-height:100%; background:var(--ink); }
 body { min-height:100%; margin:0; background:var(--ink); color:var(--paper); font-family:var(--font); }
 button,input { font:inherit; }
