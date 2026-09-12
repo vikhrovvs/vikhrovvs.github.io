@@ -9,7 +9,9 @@ const visibleCount = document.querySelector('#visible-count');
 const searchStatus = document.querySelector('#search-status');
 const tooltip = document.querySelector('#tooltip');
 const toast = document.querySelector('#toast');
-const anagramLeadersList = document.querySelector('#anagram-leaders-list');
+const anagramLeadersPanel = document.querySelector('.anagram-leaders');
+const leadersBySize = document.querySelector('#leaders-by-size');
+const leadersByLength = document.querySelector('#leaders-by-length');
 
 const state = {
   data: null,
@@ -111,13 +113,36 @@ function randomAlternative(items, current) {
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
+function leaderStatMarkup(entry) {
+  if (entry.kind === 'size') {
+    return `<strong>${entry.size}</strong> ${wordForm(entry.size, ['слово', 'слова', 'слов'])} в узле&nbsp; | &nbsp;<strong>${entry.nodeCount}</strong> ${wordForm(entry.nodeCount, ['такой узел', 'таких узла', 'таких узлов'])}`;
+  }
+  return `<strong>${entry.length}</strong> ${wordForm(entry.length, ['буква', 'буквы', 'букв'])}&nbsp; | &nbsp;<strong>${entry.maxSize}</strong> ${wordForm(entry.maxSize, ['слово', 'слова', 'слов'])} максимум&nbsp; | &nbsp;<strong>${entry.nodeCount}</strong> ${wordForm(entry.nodeCount, ['такая вершина', 'такие вершины', 'таких вершин'])}`;
+}
+
+function leaderAriaLabel(entry) {
+  if (entry.kind === 'size') {
+    return `${entry.size} ${wordForm(entry.size, ['слово', 'слова', 'слов'])} в узле, ${entry.nodeCount} ${wordForm(entry.nodeCount, ['такой узел', 'таких узла', 'таких узлов'])}: ${entry.current.word}`;
+  }
+  return `${entry.length} ${wordForm(entry.length, ['буква', 'буквы', 'букв'])}, максимум ${entry.maxSize} ${wordForm(entry.maxSize, ['слово', 'слова', 'слов'])}, ${entry.nodeCount} ${wordForm(entry.nodeCount, ['такая вершина', 'такие вершины', 'таких вершин'])}: ${entry.current.word}`;
+}
+
+function leaderMarkup(entry) {
+  return `<button class="leader-item" type="button" data-kind="${entry.kind}" data-key="${entry.key}" data-node="${entry.current.nodeIndex}" data-word="${escapeHtml(entry.current.word)}" aria-label="${escapeHtml(leaderAriaLabel(entry))}">
+    <span class="leader-stat">${leaderStatMarkup(entry)}</span>
+    <span class="leader-word">${escapeHtml(entry.current.word)}</span>
+    <span class="leader-arrow" aria-hidden="true">↗</span>
+  </button>`;
+}
+
 function updateAnagramLeader(entry) {
   entry.current = randomAlternative(entry.samples, entry.current);
-  const button = anagramLeadersList.querySelector(`[data-size="${entry.size}"]`);
+  const list = entry.kind === 'size' ? leadersBySize : leadersByLength;
+  const button = list.querySelector(`[data-key="${entry.key}"]`);
   if (!button) return;
   button.dataset.node = entry.current.nodeIndex;
   button.dataset.word = entry.current.word;
-  button.setAttribute('aria-label', `${entry.size} ${wordForm(entry.size, ['слово', 'слова', 'слов'])} в узле, ${entry.nodeCount} ${wordForm(entry.nodeCount, ['такой узел', 'таких узла', 'таких узлов'])}: ${entry.current.word}`);
+  button.setAttribute('aria-label', leaderAriaLabel(entry));
   const word = button.querySelector('.leader-word');
   word.classList.remove('is-changing');
   void word.offsetWidth;
@@ -127,30 +152,40 @@ function updateAnagramLeader(entry) {
 
 function buildAnagramLeaders() {
   const bySize = new Map();
+  const byLength = new Map();
   state.nodes.forEach((node, nodeIndex) => {
     if (node.words.length < 2 || node.added) return;
     const size = node.words.length;
     if (!bySize.has(size)) bySize.set(size, []);
     node.words.forEach(([word]) => bySize.get(size).push({ nodeIndex, word }));
+    const length = Array.from(node.id).length;
+    if (!byLength.has(length)) byLength.set(length, []);
+    byLength.get(length).push({ nodeIndex, size, words: node.words.map(([word]) => word) });
   });
 
-  state.anagramLeaders = [...bySize]
+  const sizeLeaders = [...bySize]
     .sort(([first], [second]) => second - first)
     .map(([size, samples]) => {
       const nodeCount = new Set(samples.map((sample) => sample.nodeIndex)).size;
-      return { size, nodeCount, samples, current: randomAlternative(samples) };
+      return { kind: 'size', key: size, size, nodeCount, samples, current: randomAlternative(samples) };
     });
 
-  anagramLeadersList.innerHTML = state.anagramLeaders.map((entry) => `
-    <button class="leader-item" type="button" data-size="${entry.size}" data-node="${entry.current.nodeIndex}" data-word="${escapeHtml(entry.current.word)}" aria-label="${entry.size} ${wordForm(entry.size, ['слово', 'слова', 'слов'])} в узле, ${entry.nodeCount} ${wordForm(entry.nodeCount, ['такой узел', 'таких узла', 'таких узлов'])}: ${escapeHtml(entry.current.word)}">
-      <span class="leader-stat"><strong>${entry.size}</strong> ${wordForm(entry.size, ['слово', 'слова', 'слов'])} в узле&nbsp; | &nbsp;<strong>${entry.nodeCount}</strong> ${wordForm(entry.nodeCount, ['такой узел', 'таких узла', 'таких узлов'])}</span>
-      <span class="leader-word">${escapeHtml(entry.current.word)}</span>
-      <span class="leader-arrow" aria-hidden="true">↗</span>
-    </button>`).join('');
+  const lengthLeaders = [...byLength]
+    .sort(([first], [second]) => first - second)
+    .map(([length, groups]) => {
+      const maxSize = Math.max(...groups.map((group) => group.size));
+      const winners = groups.filter((group) => group.size === maxSize);
+      const samples = winners.flatMap((group) => group.words.map((word) => ({ nodeIndex: group.nodeIndex, word })));
+      return { kind: 'length', key: length, length, maxSize, nodeCount: winners.length, samples, current: randomAlternative(samples) };
+    });
+
+  state.anagramLeaders = [...sizeLeaders, ...lengthLeaders];
+  leadersBySize.innerHTML = sizeLeaders.map(leaderMarkup).join('');
+  leadersByLength.innerHTML = lengthLeaders.map(leaderMarkup).join('');
 
   clearInterval(state.anagramLeaderTimer);
   state.anagramLeaderTimer = window.setInterval(() => {
-    if (!state.anagramLeaders.length || document.hidden || anagramLeadersList.matches(':hover') || anagramLeadersList.contains(document.activeElement)) return;
+    if (!state.anagramLeaders.length || document.hidden || anagramLeadersPanel.matches(':hover') || anagramLeadersPanel.contains(document.activeElement)) return;
     const entry = state.anagramLeaders[state.anagramLeaderCursor % state.anagramLeaders.length];
     state.anagramLeaderCursor += 1;
     updateAnagramLeader(entry);
@@ -618,7 +653,7 @@ canvas.addEventListener('pointercancel', () => { state.pointer = null; });
 canvas.addEventListener('pointerleave', () => { if (!state.pointer) { state.hovered = -1; tooltip.hidden = true; draw(); } });
 
 searchForm.addEventListener('submit', (event) => { event.preventDefault(); submitWord(wordInput.value); });
-anagramLeadersList.addEventListener('click', (event) => {
+anagramLeadersPanel.addEventListener('click', (event) => {
   const button = event.target.closest('.leader-item');
   if (!button) return;
   selectNode(Number(button.dataset.node), true);
