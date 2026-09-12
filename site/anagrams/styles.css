@@ -62,7 +62,7 @@ button { color: inherit; }
 .leader-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .25rem .6rem; width: 100%; min-height: 54px; padding: .58rem .65rem; border: 1px solid transparent; border-radius: 10px; background: transparent; text-align: left; cursor: pointer; }
 .leader-item:hover, .leader-item:focus-visible { border-color: #444b3e; outline: 0; background: #20241d; }
 .leader-item:focus-visible { box-shadow: 0 0 0 2px rgba(216,255,67,.18); }
-.leader-stat { grid-column: 1 / -1; color: #737b6f; font-size: .65rem; }
+.leader-stat { grid-column: 1 / -1; color: #737b6f; font-size: .65rem; letter-spacing: -.015em; white-space: nowrap; }
 .leader-stat strong { color: #aeb5a7; font-weight: 600; }
 .leader-word { min-width: 0; overflow: hidden; color: #e3e6df; font: 600 .93rem var(--display); text-overflow: ellipsis; white-space: nowrap; }
 .leader-arrow { align-self: center; color: #5e6659; font-size: .85rem; transition: color .18s ease, transform .18s ease; }
@@ -141,7 +141,7 @@ button { color: inherit; }
   .leaders-head h2 { font-size: .9rem; }
   .leaders-head small { margin-top: .25rem; font-size: .62rem; }
   .leaders-list { flex: 1; flex-direction: row; gap: 5px; height: auto; overflow-x: auto; overflow-y: hidden; }
-  .leader-item { flex: 0 0 132px; min-height: 49px; padding: .45rem .55rem; background: #20241d; }
+  .leader-item { flex: 0 0 195px; min-height: 49px; padding: .45rem .55rem; background: #20241d; }
   .leader-stat { font-size: .59rem; }
   .leader-word { font-size: .82rem; }
   .graph-stage { height: 100%; }

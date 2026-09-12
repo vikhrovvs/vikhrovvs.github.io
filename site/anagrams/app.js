@@ -113,11 +113,11 @@ function randomAlternative(items, current) {
 
 function updateAnagramLeader(entry) {
   entry.current = randomAlternative(entry.samples, entry.current);
-  const button = anagramLeadersList.querySelector(`[data-length="${entry.length}"]`);
+  const button = anagramLeadersList.querySelector(`[data-size="${entry.size}"]`);
   if (!button) return;
   button.dataset.node = entry.current.nodeIndex;
   button.dataset.word = entry.current.word;
-  button.setAttribute('aria-label', `${entry.length} ${wordForm(entry.length, ['буква', 'буквы', 'букв'])}, ${entry.count} ${wordForm(entry.count, ['слово', 'слова', 'слов'])}: ${entry.current.word}`);
+  button.setAttribute('aria-label', `${entry.size} ${wordForm(entry.size, ['слово', 'слова', 'слов'])} в узле, ${entry.nodeCount} ${wordForm(entry.nodeCount, ['такой узел', 'таких узла', 'таких узлов'])}: ${entry.current.word}`);
   const word = button.querySelector('.leader-word');
   word.classList.remove('is-changing');
   void word.offsetWidth;
@@ -126,31 +126,24 @@ function updateAnagramLeader(entry) {
 }
 
 function buildAnagramLeaders() {
-  const byLength = new Map();
+  const bySize = new Map();
   state.nodes.forEach((node, nodeIndex) => {
     if (node.words.length < 2 || node.added) return;
-    const length = Array.from(node.id).length;
-    if (!byLength.has(length)) byLength.set(length, []);
-    byLength.get(length).push({
-      nodeIndex,
-      count: node.words.length,
-      words: node.words.map(([word]) => word),
-    });
+    const size = node.words.length;
+    if (!bySize.has(size)) bySize.set(size, []);
+    node.words.forEach(([word]) => bySize.get(size).push({ nodeIndex, word }));
   });
 
-  state.anagramLeaders = [...byLength]
-    .sort(([first], [second]) => first - second)
-    .map(([length, groups]) => {
-      const count = Math.max(...groups.map((group) => group.count));
-      const samples = groups
-        .filter((group) => group.count === count)
-        .flatMap((group) => group.words.map((word) => ({ nodeIndex: group.nodeIndex, word })));
-      return { length, count, samples, current: randomAlternative(samples) };
+  state.anagramLeaders = [...bySize]
+    .sort(([first], [second]) => second - first)
+    .map(([size, samples]) => {
+      const nodeCount = new Set(samples.map((sample) => sample.nodeIndex)).size;
+      return { size, nodeCount, samples, current: randomAlternative(samples) };
     });
 
   anagramLeadersList.innerHTML = state.anagramLeaders.map((entry) => `
-    <button class="leader-item" type="button" data-length="${entry.length}" data-node="${entry.current.nodeIndex}" data-word="${escapeHtml(entry.current.word)}" aria-label="${entry.length} ${wordForm(entry.length, ['буква', 'буквы', 'букв'])}, ${entry.count} ${wordForm(entry.count, ['слово', 'слова', 'слов'])}: ${escapeHtml(entry.current.word)}">
-      <span class="leader-stat"><strong>${entry.length}</strong> ${wordForm(entry.length, ['буква', 'буквы', 'букв'])} · <strong>${entry.count}</strong> ${wordForm(entry.count, ['слово', 'слова', 'слов'])}</span>
+    <button class="leader-item" type="button" data-size="${entry.size}" data-node="${entry.current.nodeIndex}" data-word="${escapeHtml(entry.current.word)}" aria-label="${entry.size} ${wordForm(entry.size, ['слово', 'слова', 'слов'])} в узле, ${entry.nodeCount} ${wordForm(entry.nodeCount, ['такой узел', 'таких узла', 'таких узлов'])}: ${escapeHtml(entry.current.word)}">
+      <span class="leader-stat"><strong>${entry.size}</strong> ${wordForm(entry.size, ['слово', 'слова', 'слов'])} в узле&nbsp; | &nbsp;<strong>${entry.nodeCount}</strong> ${wordForm(entry.nodeCount, ['такой узел', 'таких узла', 'таких узлов'])}</span>
       <span class="leader-word">${escapeHtml(entry.current.word)}</span>
       <span class="leader-arrow" aria-hidden="true">↗</span>
     </button>`).join('');
