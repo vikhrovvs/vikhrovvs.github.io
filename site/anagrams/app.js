@@ -21,7 +21,7 @@ const state = {
   visibleEdges: [],
   selected: -1,
   hovered: -1,
-  camera: { x: 0, y: 0, scale: 1 },
+  camera: { x: 0, y: 0, scale: 1, fitScale: 1 },
   pointer: null,
   dragDistance: 0,
   animation: 0,
@@ -260,14 +260,18 @@ function fitFontSize(word, maximum, maximumWidth, weight, family) {
 function drawNodeWords(node, point, radius) {
   const words = node.words.slice(0, 4).map(([word]) => word);
   const secondaryCount = words.length - 1;
-  const verticalBudget = radius * 1.42;
+  const zoomRatio = state.camera.scale / state.camera.fitScale;
+  const fittedRadius = radius / zoomRatio;
+  const verticalBudget = fittedRadius * 1.42;
   const primaryMaximum = Math.min(17, verticalBudget / (1.08 + secondaryCount * .76));
-  const maximumWidth = radius * 1.45;
-  const primarySize = Math.max(3.5, fitFontSize(words[0], primaryMaximum, maximumWidth, 600, 'Onest, sans-serif'));
-  const secondaryMaximum = primarySize * .68;
-  const secondarySizes = words.slice(1).map((word) =>
-    Math.max(3, fitFontSize(word, secondaryMaximum, maximumWidth, 500, 'Manrope, sans-serif')),
+  const maximumWidth = fittedRadius * 1.45;
+  const fittedPrimarySize = Math.max(3.5, fitFontSize(words[0], primaryMaximum, maximumWidth, 600, 'Onest, sans-serif'));
+  const fittedSecondaryMaximum = fittedPrimarySize * .68;
+  const fittedSecondarySizes = words.slice(1).map((word) =>
+    Math.max(3, fitFontSize(word, fittedSecondaryMaximum, maximumWidth, 500, 'Manrope, sans-serif')),
   );
+  const primarySize = fittedPrimarySize * zoomRatio;
+  const secondarySizes = fittedSecondarySizes.map((size) => size * zoomRatio);
   const primaryLineHeight = primarySize * 1.08;
   const secondaryLineHeights = secondarySizes.map((size) => size * 1.12);
   const blockHeight = primaryLineHeight + secondaryLineHeights.reduce((total, height) => total + height, 0);
@@ -299,6 +303,7 @@ function fitView() {
   const width = Math.max(300, Math.max(...xs) - Math.min(...xs) + 150);
   const height = Math.max(260, Math.max(...ys) - Math.min(...ys) + 150);
   state.camera.scale = Math.max(.34, Math.min(1, Math.min((bounds.width - 70) / width, (bounds.height - 110) / height)));
+  state.camera.fitScale = state.camera.scale;
   const centerX = (Math.max(...xs) + Math.min(...xs)) / 2;
   const centerY = (Math.max(...ys) + Math.min(...ys)) / 2;
   state.camera.x = -centerX * state.camera.scale;
