@@ -12,6 +12,8 @@ const toast = document.querySelector('#toast');
 const anagramLeadersPanel = document.querySelector('.anagram-leaders');
 const leadersBySize = document.querySelector('#leaders-by-size');
 const leadersByLength = document.querySelector('#leaders-by-length');
+const neighborhoodButton = document.querySelector('#neighborhood-button');
+const neighborhoodPopover = document.querySelector('#neighborhood-popover');
 
 const state = {
   data: null,
@@ -34,6 +36,8 @@ const state = {
   activePath: null,
   pathTarget: '',
   pathMessage: '',
+  neighborhoodDepth: 2,
+  neighborhoodLimit: 72,
 };
 
 const COLORS = {
@@ -48,7 +52,6 @@ const COLORS = {
 
 const NEIGHBORHOOD_LIMITS = {
   firstRing: 24,
-  total: 72,
 };
 const MAX_ZOOM = 4;
 
@@ -198,21 +201,26 @@ function buildAnagramLeaders() {
 function createNeighborhood(centerIndex) {
   const included = new Set([centerIndex]);
   const levels = new Map([[centerIndex, 0]]);
+  const directLimit = state.neighborhoodDepth === 1
+    ? state.neighborhoodLimit - 1
+    : Math.min(NEIGHBORHOOD_LIMITS.firstRing, state.neighborhoodLimit - 1);
   const first = [...state.adjacency[centerIndex]]
     .sort((a, b) => state.nodes[b[0]].frequency - state.nodes[a[0]].frequency)
-    .slice(0, NEIGHBORHOOD_LIMITS.firstRing);
+    .slice(0, directLimit);
 
   first.forEach(([index]) => { included.add(index); levels.set(index, 1); });
-  const secondCandidates = [];
-  first.forEach(([index]) => {
-    state.adjacency[index].forEach(([neighbor]) => {
-      if (!included.has(neighbor)) secondCandidates.push(neighbor);
+  if (state.neighborhoodDepth === 2) {
+    const secondCandidates = [];
+    first.forEach(([index]) => {
+      state.adjacency[index].forEach(([neighbor]) => {
+        if (!included.has(neighbor)) secondCandidates.push(neighbor);
+      });
     });
-  });
-  [...new Set(secondCandidates)]
-    .sort((a, b) => state.nodes[b].frequency - state.nodes[a].frequency)
-    .slice(0, Math.max(0, NEIGHBORHOOD_LIMITS.total - included.size))
-    .forEach((index) => { included.add(index); levels.set(index, 2); });
+    [...new Set(secondCandidates)]
+      .sort((a, b) => state.nodes[b].frequency - state.nodes[a].frequency)
+      .slice(0, Math.max(0, state.neighborhoodLimit - included.size))
+      .forEach((index) => { included.add(index); levels.set(index, 2); });
+  }
 
   const visible = [...included];
   const visibleLookup = new Map(visible.map((index, localIndex) => [index, localIndex]));
@@ -797,6 +805,36 @@ document.addEventListener('click', (event) => { if (!searchForm.contains(event.t
 document.querySelector('#zoom-in').addEventListener('click', () => zoomAt(1.22, canvas.clientWidth / 2, canvas.clientHeight / 2));
 document.querySelector('#zoom-out').addEventListener('click', () => zoomAt(.82, canvas.clientWidth / 2, canvas.clientHeight / 2));
 document.querySelector('#fit-view').addEventListener('click', fitView);
+
+function updateNeighborhoodControls() {
+  neighborhoodPopover.querySelectorAll('[data-depth]').forEach((button) => {
+    button.setAttribute('aria-pressed', String(Number(button.dataset.depth) === state.neighborhoodDepth));
+  });
+  neighborhoodPopover.querySelectorAll('[data-limit]').forEach((button) => {
+    button.setAttribute('aria-pressed', String(Number(button.dataset.limit) === state.neighborhoodLimit));
+  });
+}
+
+function toggleNeighborhoodPopover(open) {
+  neighborhoodPopover.hidden = !open;
+  neighborhoodButton.setAttribute('aria-expanded', String(open));
+}
+
+neighborhoodButton.addEventListener('click', () => toggleNeighborhoodPopover(neighborhoodPopover.hidden));
+neighborhoodPopover.addEventListener('click', (event) => {
+  const option = event.target.closest('[data-depth], [data-limit]');
+  if (!option) return;
+  if (option.dataset.depth) state.neighborhoodDepth = Number(option.dataset.depth);
+  if (option.dataset.limit) state.neighborhoodLimit = Number(option.dataset.limit);
+  updateNeighborhoodControls();
+  if (state.selected >= 0) selectNode(state.selected, true);
+});
+document.addEventListener('click', (event) => {
+  if (!neighborhoodPopover.hidden && !neighborhoodPopover.contains(event.target) && !neighborhoodButton.contains(event.target)) {
+    toggleNeighborhoodPopover(false);
+  }
+});
+updateNeighborhoodControls();
 
 const aboutButton = document.querySelector('#about-button');
 const aboutPopover = document.querySelector('#about-popover');

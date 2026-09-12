@@ -71,6 +71,28 @@
             <button id="fit-view" type="button" aria-label="Показать граф целиком">
               <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"></path></svg>
             </button>
+            <button id="neighborhood-button" type="button" aria-label="Настроить окружение" aria-expanded="false" aria-controls="neighborhood-popover">
+              <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M10 14v6"></path></svg>
+            </button>
+          </div>
+
+          <div class="neighborhood-popover" id="neighborhood-popover" hidden>
+            <strong>Окружение вершины</strong>
+            <div class="neighborhood-setting">
+              <span>Глубина</span>
+              <div class="setting-options" aria-label="Глубина окружения">
+                <button type="button" data-depth="1">1 шаг</button>
+                <button type="button" data-depth="2">2 шага</button>
+              </div>
+            </div>
+            <div class="neighborhood-setting">
+              <span>Максимум вершин</span>
+              <div class="setting-options" aria-label="Максимальное число вершин">
+                <button type="button" data-limit="40">40</button>
+                <button type="button" data-limit="72">72</button>
+                <button type="button" data-limit="100">100</button>
+              </div>
+            </div>
           </div>
 
           <div class="legend" aria-label="Легенда графа">
