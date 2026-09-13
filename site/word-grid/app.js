@@ -2,10 +2,7 @@ const form = document.querySelector('#solver-form');
 const wordsInput = document.querySelector('#words-input');
 const wordCount = document.querySelector('#word-count');
 const solveButton = document.querySelector('#solve-button');
-const solveLabel = document.querySelector('#solve-label');
 const stopButton = document.querySelector('#stop-button');
-const runtimeNote = document.querySelector('#runtime-note');
-const modeInputs = [...document.querySelectorAll('[name="search-mode"]')];
 const statusBadge = document.querySelector('#status-badge');
 const resultMessage = document.querySelector('#result-message');
 const resultStats = document.querySelector('#result-stats');
@@ -20,6 +17,12 @@ const solutionPosition = document.querySelector('#solution-position');
 const storedSolutions = document.querySelector('#stored-solutions');
 const previousSolution = document.querySelector('#previous-solution');
 const nextSolution = document.querySelector('#next-solution');
+const solutionComplexity = document.querySelector('#solution-complexity');
+const minimumComplexity = document.querySelector('#minimum-complexity');
+const averageComplexity = document.querySelector('#average-complexity');
+const solutionHighlights = document.querySelector('#solution-highlights');
+const firstSolutionButton = document.querySelector('#first-solution');
+const bestSolutionButton = document.querySelector('#best-solution');
 
 const TIME_LIMIT_SECONDS = 20;
 const DISPLAY_LIMIT = 200;
@@ -29,10 +32,11 @@ let worker;
 let requestId = 0;
 let latestResult = null;
 let selectedWordIndex = -1;
-let activeMode = 'one';
 let solutions = [];
 let currentSolutionIndex = -1;
 let reportedCount = 0;
+let bestSolutionIndex = -1;
+let enumerationExact = false;
 
 function parseVisibleWords(value) {
   return value
@@ -59,23 +63,11 @@ function solutionLabel(count, running) {
     : `уникальных ${form === 'few' ? 'решения' : 'решений'}`;
 }
 
-function selectedMode() {
-  return modeInputs.find((input) => input.checked)?.value ?? 'one';
-}
-
 function updateWordCount() {
   const words = [...new Set(parseVisibleWords(wordsInput.value).map((word) => word.toLocaleLowerCase('ru-RU').normalize('NFC')))];
   const letters = new Set(words.join('')).size;
   wordCount.textContent = `${words.length} ${pluralForm(words.length, ['слово', 'слова', 'слов'])} · ${letters} ${pluralForm(letters, ['буква', 'буквы', 'букв'])}`;
   wordCount.dataset.complete = String(letters === 16);
-}
-
-function updateModeCopy() {
-  const enumerateAll = selectedMode() === 'all';
-  solveLabel.textContent = enumerateAll ? 'Найти все решения' : 'Найти квадрат';
-  runtimeNote.textContent = enumerateAll
-    ? 'Первое решение появится сразу; полный подсчёт продолжится до 20 секунд.'
-    : 'Python загрузится только после запуска поиска.';
 }
 
 function setStatus(state, label, message) {
@@ -87,7 +79,6 @@ function setStatus(state, label, message) {
 function setBusy(isBusy) {
   wordsInput.disabled = isBusy;
   solveButton.disabled = isBusy;
-  modeInputs.forEach((input) => { input.disabled = isBusy; });
   stopButton.hidden = !isBusy;
 }
 
@@ -101,13 +92,28 @@ function updateSolutionCount({ exact = false, running = false } = {}) {
 }
 
 function updateNavigation() {
-  const shouldShow = activeMode === 'all' && solutions.length > 0;
+  const shouldShow = solutions.length > 0;
   solutionNavigation.hidden = !shouldShow;
   if (!shouldShow) return;
   solutionPosition.textContent = String(currentSolutionIndex + 1);
   storedSolutions.textContent = solutions.length.toLocaleString('ru-RU');
   previousSolution.disabled = currentSolutionIndex <= 0;
   nextSolution.disabled = currentSolutionIndex >= solutions.length - 1;
+}
+
+function updateHighlights() {
+  const hasBest = bestSolutionIndex >= 0 && solutions.length > 0;
+  solutionHighlights.hidden = !hasBest;
+  if (!hasBest) return;
+
+  const bestIsFirst = bestSolutionIndex === 0;
+  firstSolutionButton.textContent = bestIsFirst
+    ? `Первое · ${enumerationExact ? 'самое запутанное' : 'лучшее пока'}`
+    : 'Первое найденное';
+  firstSolutionButton.setAttribute('aria-pressed', String(currentSolutionIndex === 0));
+  bestSolutionButton.hidden = bestIsFirst;
+  bestSolutionButton.textContent = enumerationExact ? 'Самое запутанное' : 'Лучшее из найденных';
+  bestSolutionButton.setAttribute('aria-pressed', String(currentSolutionIndex === bestSolutionIndex));
 }
 
 function resetBoard() {
@@ -117,19 +123,23 @@ function resetBoard() {
   wordPaths.replaceChildren();
   resultStats.textContent = '';
   solutionSummary.hidden = true;
+  solutionComplexity.hidden = true;
+  solutionHighlights.hidden = true;
   solutionNavigation.hidden = true;
   latestResult = null;
   selectedWordIndex = -1;
   solutions = [];
   currentSolutionIndex = -1;
   reportedCount = 0;
+  bestSolutionIndex = -1;
+  enumerationExact = false;
 }
 
 function handleWorkerFailure(message, failedWorker) {
   failedWorker?.terminate();
   if (worker === failedWorker) worker = null;
   setBusy(false);
-  if (activeMode === 'all' && reportedCount > 0) {
+  if (reportedCount > 0) {
     updateSolutionCount({ exact: false });
     setStatus('partial', 'подсчёт прерван', `Найдено решений: не менее ${reportedCount.toLocaleString('ru-RU')}. ${message}`);
   } else {
@@ -139,7 +149,7 @@ function handleWorkerFailure(message, failedWorker) {
 
 function ensureWorker() {
   if (worker) return worker;
-  const nextWorker = new Worker('./worker.js?v=2', { type: 'module' });
+  const nextWorker = new Worker('./worker.js?v=3', { type: 'module' });
   worker = nextWorker;
   nextWorker.addEventListener('message', handleWorkerMessage);
   nextWorker.addEventListener('error', () => {
@@ -151,6 +161,13 @@ function ensureWorker() {
 function formatElapsed(milliseconds) {
   if (milliseconds < 1000) return `${milliseconds} мс`;
   return `${(milliseconds / 1000).toLocaleString('ru-RU', { maximumFractionDigits: 2 })} с`;
+}
+
+function formatComplexity(value) {
+  return Number(value ?? 0).toLocaleString('ru-RU', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  });
 }
 
 function renderStats(stats) {
@@ -185,7 +202,7 @@ function escapeHtml(value) {
 function highlightWord(index) {
   if (!latestResult?.words?.[index]) return;
   selectedWordIndex = index;
-  const { word, path } = latestResult.words[index];
+  const { word, path, complexity } = latestResult.words[index];
   const pathSteps = new Map(path.map((cell, step) => [cell, step + 1]));
   [...boardGrid.children].forEach((cell, cellIndex) => {
     const step = pathSteps.get(cellIndex);
@@ -204,7 +221,10 @@ function highlightWord(index) {
 
   const points = path.map((cell) => boardPoint(cell).join(',')).join(' ');
   pathOverlay.innerHTML = `<polyline points="${points}"></polyline>`;
-  resultMessage.textContent = `«${word}»: ${path.map((cell) => cell + 1).join(' → ')}.`;
+  const details = complexity
+    ? ` Запутанность ${formatComplexity(complexity.score)}: ${complexity.turns} ${pluralForm(complexity.turns, ['смена', 'смены', 'смен'])} направления, ${complexity.direction_types} ${pluralForm(complexity.direction_types, ['тип', 'типа', 'типов'])} движения, ${complexity.diagonal_steps} ${pluralForm(complexity.diagonal_steps, ['диагональный шаг', 'диагональных шага', 'диагональных шагов'])}.`
+    : '';
+  resultMessage.textContent = `«${word}»: ${path.map((cell) => cell + 1).join(' → ')}.${details}`;
 }
 
 function renderSolutionAt(index) {
@@ -217,17 +237,55 @@ function renderSolutionAt(index) {
     .join('');
   boardGrid.setAttribute('aria-label', `Найденный квадрат: ${result.board.map((letter) => letter || 'пусто').join(', ')}`);
   wordPaths.innerHTML = result.words
-    .map(({ word }, wordIndex) => `<button class="word-chip" type="button" data-word-index="${wordIndex}" aria-pressed="false">${escapeHtml(word)}</button>`)
+    .map(({ word, complexity }, wordIndex) => `<button class="word-chip" type="button" data-word-index="${wordIndex}" aria-pressed="false"><span>${escapeHtml(word)}</span><small>${formatComplexity(complexity?.score)}</small></button>`)
     .join('');
+  if (result.complexity) {
+    minimumComplexity.textContent = formatComplexity(result.complexity.minimum);
+    averageComplexity.textContent = formatComplexity(result.complexity.average);
+    solutionComplexity.hidden = false;
+  } else {
+    solutionComplexity.hidden = true;
+  }
   updateNavigation();
+  updateHighlights();
   highlightWord(0);
+}
+
+function boardKey(solution) {
+  return solution.board.join('\u0001');
+}
+
+function registerBestSolution(solution) {
+  if (!solution) return;
+  const previousBestIndex = bestSolutionIndex;
+  let index = solutions.findIndex((candidate) => boardKey(candidate) === boardKey(solution));
+  if (index < 0) {
+    index = DISPLAY_LIMIT;
+    if (solutions.length > DISPLAY_LIMIT) {
+      solutions[index] = solution;
+    } else {
+      solutions.push(solution);
+    }
+  }
+  bestSolutionIndex = index;
+  if (currentSolutionIndex === previousBestIndex && previousBestIndex === DISPLAY_LIMIT) {
+    renderSolutionAt(bestSolutionIndex);
+    return;
+  }
+  updateNavigation();
+  updateHighlights();
 }
 
 function acceptEnumerationUpdate(update) {
   reportedCount = Math.max(reportedCount, update.count ?? 0);
   updateSolutionCount({ exact: false, running: true });
+  if (update.event === 'best') {
+    registerBestSolution(update.solution);
+    return;
+  }
   if (update.event !== 'solution') return;
   solutions.push(update.solution);
+  if (update.best_so_far) registerBestSolution(update.solution);
   if (solutions.length === 1) {
     renderSolutionAt(0);
     setStatus('solving', 'считаем дальше');
@@ -238,6 +296,8 @@ function acceptEnumerationUpdate(update) {
 
 function finishEnumeration(result) {
   reportedCount = result.count ?? reportedCount;
+  enumerationExact = Boolean(result.exact);
+  registerBestSolution(result.best_solution);
   renderStats(result.stats);
   if (reportedCount > 0) {
     updateSolutionCount({ exact: result.exact });
@@ -245,6 +305,7 @@ function finishEnumeration(result) {
     const label = result.exact ? 'все решения найдены' : 'показана нижняя граница';
     setStatus(state, label, result.message);
     updateNavigation();
+    updateHighlights();
     return;
   }
 
@@ -282,35 +343,18 @@ function handleWorkerMessage(event) {
 
   if (data.type !== 'result') return;
   setBusy(false);
-  const result = data.result;
-  if (activeMode === 'all') {
-    finishEnumeration(result);
-  } else if (result.status === 'solved') {
-    solutions = [result];
-    reportedCount = 1;
-    setStatus('solved', 'решение найдено', result.message);
-    renderSolutionAt(0);
-    renderStats(result.stats);
-  } else {
-    resetBoard();
-    renderStats(result.stats);
-    const label = result.status === 'timeout' ? 'нужно больше времени' :
-      result.status === 'invalid' ? 'проверьте ввод' : 'решения нет';
-    setStatus('failed', label, result.message);
-  }
+  finishEnumeration(data.result);
 }
 
 form.addEventListener('submit', (event) => {
   event.preventDefault();
   requestId += 1;
-  activeMode = selectedMode();
   resetBoard();
   setBusy(true);
   setStatus('solving', 'подготовка', 'Проверяем слова и готовим точный поиск.');
   ensureWorker().postMessage({
     type: 'solve',
     requestId,
-    mode: activeMode,
     words: wordsInput.value,
     timeLimitSeconds: TIME_LIMIT_SECONDS,
     displayLimit: DISPLAY_LIMIT,
@@ -323,7 +367,7 @@ stopButton.addEventListener('click', () => {
   worker?.terminate();
   worker = null;
   setBusy(false);
-  if (activeMode === 'all' && reportedCount > 0) {
+  if (reportedCount > 0) {
     updateSolutionCount({ exact: false });
     setStatus('partial', 'поиск остановлен', `Найдено уникальных решений: не менее ${reportedCount.toLocaleString('ru-RU')}.`);
   } else {
@@ -338,7 +382,7 @@ wordPaths.addEventListener('click', (event) => {
 
 previousSolution.addEventListener('click', () => renderSolutionAt(currentSolutionIndex - 1));
 nextSolution.addEventListener('click', () => renderSolutionAt(currentSolutionIndex + 1));
+firstSolutionButton.addEventListener('click', () => renderSolutionAt(0));
+bestSolutionButton.addEventListener('click', () => renderSolutionAt(bestSolutionIndex));
 wordsInput.addEventListener('input', updateWordCount);
-modeInputs.forEach((input) => input.addEventListener('change', updateModeCopy));
 updateWordCount();
-updateModeCopy();

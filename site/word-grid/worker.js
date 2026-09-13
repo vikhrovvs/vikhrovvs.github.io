@@ -8,15 +8,14 @@ async function getSolver() {
       self.postMessage({ type: 'progress', stage: 'loading' });
       const [pyodide, response] = await Promise.all([
         loadPyodide(),
-        fetch('./solver.py?v=2'),
+        fetch('./solver.py?v=3'),
       ]);
       if (!response.ok) throw new Error('Не удалось загрузить Python-алгоритм.');
       const source = await response.text();
       pyodide.runPython(source);
-      const solveJson = pyodide.globals.get('solve_json');
       const enumerateJson = pyodide.globals.get('enumerate_json');
       self.postMessage({ type: 'progress', stage: 'ready' });
-      return { solveJson, enumerateJson };
+      return { enumerateJson };
     })();
   }
   return solverPromise;
@@ -27,10 +26,9 @@ self.addEventListener('message', async (event) => {
   const requestId = event.data.requestId;
   try {
     const solver = await getSolver();
-    const enumerateAll = event.data.mode === 'all';
     self.postMessage({
       type: 'progress',
-      stage: enumerateAll ? 'enumerating' : 'solving',
+      stage: 'enumerating',
       requestId,
     });
     const onUpdate = (payload) => {
@@ -40,15 +38,13 @@ self.addEventListener('message', async (event) => {
         update: JSON.parse(String(payload)),
       });
     };
-    const resultProxy = enumerateAll
-      ? solver.enumerateJson(
-        event.data.words,
-        event.data.timeLimitSeconds ?? 20,
-        event.data.maxSolutions ?? 100000,
-        event.data.displayLimit ?? 200,
-        onUpdate,
-      )
-      : solver.solveJson(event.data.words, event.data.timeLimitSeconds ?? 20);
+    const resultProxy = solver.enumerateJson(
+      event.data.words,
+      event.data.timeLimitSeconds ?? 20,
+      event.data.maxSolutions ?? 100000,
+      event.data.displayLimit ?? 200,
+      onUpdate,
+    );
     const result = JSON.parse(String(resultProxy));
     resultProxy.destroy?.();
     self.postMessage({ type: 'result', requestId, result });

@@ -14,7 +14,7 @@
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2311130f'/%3E%3Cpath d='M7 7h8v8H7zm10 0h8v8h-8zM7 17h8v8H7zm10 0h8v8h-8z' fill='%23d8ff43'/%3E%3C/svg%3E"
     />
     <title>Словесный квадрат</title>
-    <link rel="stylesheet" href="./styles.css?v=2" />
+    <link rel="stylesheet" href="./styles.css?v=3" />
   </head>
   <body>
     <div class="app-shell">
@@ -64,18 +64,6 @@
               <span>Регистр не важен</span>
             </div>
 
-            <fieldset class="search-mode">
-              <legend>Режим поиска</legend>
-              <label>
-                <input type="radio" name="search-mode" value="one" checked />
-                <span>Одно решение</span>
-              </label>
-              <label>
-                <input type="radio" name="search-mode" value="all" />
-                <span>Все уникальные</span>
-              </label>
-            </fieldset>
-
             <details class="uniqueness-details">
               <summary>Как мы считаем уникальные решения</summary>
               <div>
@@ -84,19 +72,33 @@
                   <li>Разные маршруты слов по одному полю не создают новых решений.</li>
                   <li>Повороты и зеркальные отражения считаются одним решением.</li>
                   <li>Если букв меньше 16, неиспользованные клетки остаются пустыми и не создают вариантов.</li>
-                  <li>В галерее хранятся первые 200 полей; счёт продолжается до 20 секунд или 100&nbsp;000 решений.</li>
+                  <li>В галерее хранятся первые 200 полей и самое запутанное из найденных; счёт продолжается до 20 секунд или 100&nbsp;000 решений.</li>
                   <li>Точное число показывается только после полного обхода, иначе это нижняя граница.</li>
+                </ul>
+              </div>
+            </details>
+
+            <details class="complexity-details">
+              <summary>Как мы считаем запутанность</summary>
+              <div>
+                <p>Для каждого слова берём самый простой допустимый маршрут: именно его легче всего заметить.</p>
+                <ul>
+                  <li>Смена точного направления даёт 1 балл.</li>
+                  <li>Каждый дополнительный тип движения — горизонталь, вертикаль или диагональ — даёт 1 балл.</li>
+                  <li>Каждый диагональный шаг даёт ещё 0,5 балла.</li>
+                  <li>Сумма делится на число шагов в слове.</li>
+                  <li>Поля сравниваются сначала по минимальному баллу слова, затем по среднему.</li>
                 </ul>
               </div>
             </details>
 
             <div class="form-actions">
               <button class="primary-button" id="solve-button" type="submit">
-                <span id="solve-label">Найти квадрат</span><span class="button-arrow" aria-hidden="true">→</span>
+                <span>Найти решения</span><span class="button-arrow" aria-hidden="true">→</span>
               </button>
               <button class="secondary-button" id="stop-button" type="button" hidden>Остановить</button>
             </div>
-            <p class="runtime-note" id="runtime-note">Python загрузится только после запуска поиска.</p>
+            <p class="runtime-note">Первое решение появится сразу; полный подсчёт продолжится до 20 секунд.</p>
           </form>
 
           <section class="result-panel" aria-labelledby="result-title">
@@ -124,9 +126,17 @@
                   <strong id="solution-count">0</strong>
                   <span id="solution-count-label">решений найдено</span>
                 </div>
+                <div class="solution-complexity" id="solution-complexity" hidden>
+                  <span>Минимум <strong id="minimum-complexity">0</strong></span>
+                  <span>Средняя <strong id="average-complexity">0</strong></span>
+                </div>
                 <p class="result-message" id="result-message" role="status" aria-live="polite">
                   Введите слова и запустите поиск. Если решение существует, здесь появятся поле и маршруты.
                 </p>
+                <div class="solution-highlights" id="solution-highlights" aria-label="Особые решения" hidden>
+                  <button id="first-solution" type="button" aria-pressed="true">Первое найденное</button>
+                  <button id="best-solution" type="button" aria-pressed="false">Самое запутанное</button>
+                </div>
                 <div class="solution-navigation" id="solution-navigation" hidden>
                   <button id="previous-solution" type="button" aria-label="Предыдущее решение">←</button>
                   <span><strong id="solution-position">1</strong> из <span id="stored-solutions">1</span> показанных</span>
@@ -165,6 +175,6 @@
         <span>Python · WebAssembly</span>
       </footer>
     </div>
-    <script type="module" src="./app.js?v=2"></script>
+    <script type="module" src="./app.js?v=3"></script>
   </body>
 </html>

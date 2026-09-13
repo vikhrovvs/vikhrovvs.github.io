@@ -27,10 +27,12 @@ def assert_solution(solver, words: str) -> dict:
     result = solver.solve(words, time_limit_seconds=5)
     assert result["status"] == "solved", result
     assert len(result["board"]) == 16
+    assert result["complexity"]["minimum"] <= result["complexity"]["average"]
     for item in result["words"]:
         path = item["path"]
         assert len(path) == len(set(path)) == len(item["word"])
         assert "".join(result["board"][cell] for cell in path) == item["word"]
+        assert item["complexity"]["score"] >= 0
         assert all(
             solver.NEIGHBOUR_MASKS[first] & (1 << second)
             for first, second in zip(path, path[1:])
@@ -61,6 +63,30 @@ def main() -> None:
     invalid = solver.solve("два слова")
     assert invalid["status"] == "invalid"
 
+    straight = solver._path_complexity([0, 1, 2, 3])
+    assert straight == {
+        "score": 0.0,
+        "turns": 0,
+        "direction_types": 1,
+        "mix_bonus": 0,
+        "diagonal_steps": 0,
+    }
+    mixed = solver._path_complexity([0, 1, 6])
+    assert mixed == {
+        "score": 1.25,
+        "turns": 1,
+        "direction_types": 2,
+        "mix_bonus": 1,
+        "diagonal_steps": 1,
+    }
+
+    multi_path_board = [""] * 16
+    for cell, letter in {0: "а", 1: "б", 2: "в", 4: "б", 5: "в"}.items():
+        multi_path_board[cell] = letter
+    easiest = solver._solution_payload(tuple(multi_path_board), ["абв"])
+    assert easiest["words"][0]["path"] == [0, 1, 2]
+    assert easiest["words"][0]["complexity"]["score"] == 0
+
     updates: list[str] = []
     sparse = solver.enumerate_solutions("а", 5, 100, 10, updates.append)
     assert sparse["status"] == "complete" and sparse["exact"] is True
@@ -74,6 +100,14 @@ def main() -> None:
     repeated = solver.enumerate_solutions("аа", 5, 100, 10)
     assert repeated["status"] == "complete" and repeated["count"] == 8
 
+    ranking_updates: list[str] = []
+    ranked = solver.enumerate_solutions("abcd", 5, 1000, 1, ranking_updates.append)
+    ranking_events = [json.loads(update) for update in ranking_updates]
+    first_rank = ranking_events[0]["solution"]["complexity"]["minimum"]
+    assert ranked["status"] == "complete" and ranked["count"] == 221
+    assert ranked["best_solution"]["complexity"]["minimum"] > first_rank
+    assert any(update["event"] == "best" for update in ranking_events)
+
     full_board_updates: list[str] = []
     limited = solver.enumerate_solutions(
         "abcdefghijklmnop",
@@ -84,6 +118,7 @@ def main() -> None:
     )
     assert limited["status"] == "partial" and limited["exact"] is False
     assert limited["count"] == 2 and limited["stop_reason"] == "limit"
+    assert limited["best_solution"]["complexity"]["minimum"] >= 0
     assert len(full_board_updates) == 2
     assert all(
         all(json.loads(update)["solution"]["board"])
