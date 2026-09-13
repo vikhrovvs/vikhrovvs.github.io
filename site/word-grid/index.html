@@ -14,7 +14,7 @@
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2311130f'/%3E%3Cpath d='M7 7h8v8H7zm10 0h8v8h-8zM7 17h8v8H7zm10 0h8v8h-8z' fill='%23d8ff43'/%3E%3C/svg%3E"
     />
     <title>Словесный квадрат</title>
-    <link rel="stylesheet" href="./styles.css?v=1" />
+    <link rel="stylesheet" href="./styles.css?v=2" />
   </head>
   <body>
     <div class="app-shell">
@@ -46,7 +46,7 @@
                 <p>Входные данные</p>
                 <h2>Слова</h2>
               </div>
-              <span id="word-count">5 слов</span>
+              <span id="word-count">6 слов · 16 букв</span>
             </div>
 
             <label class="words-field" for="words-input">
@@ -55,7 +55,8 @@
 нота
 море
 след
-угол</textarea>
+угол
+ёж</textarea>
             </label>
 
             <div class="input-hint">
@@ -63,13 +64,39 @@
               <span>Регистр не важен</span>
             </div>
 
+            <fieldset class="search-mode">
+              <legend>Режим поиска</legend>
+              <label>
+                <input type="radio" name="search-mode" value="one" checked />
+                <span>Одно решение</span>
+              </label>
+              <label>
+                <input type="radio" name="search-mode" value="all" />
+                <span>Все уникальные</span>
+              </label>
+            </fieldset>
+
+            <details class="uniqueness-details">
+              <summary>Как мы считаем уникальные решения</summary>
+              <div>
+                <p>Основной случай — ровно 16 разных букв: тогда каждая занимает одну клетку.</p>
+                <ul>
+                  <li>Разные маршруты слов по одному полю не создают новых решений.</li>
+                  <li>Повороты и зеркальные отражения считаются одним решением.</li>
+                  <li>Если букв меньше 16, неиспользованные клетки остаются пустыми и не создают вариантов.</li>
+                  <li>В галерее хранятся первые 200 полей; счёт продолжается до 20 секунд или 100&nbsp;000 решений.</li>
+                  <li>Точное число показывается только после полного обхода, иначе это нижняя граница.</li>
+                </ul>
+              </div>
+            </details>
+
             <div class="form-actions">
               <button class="primary-button" id="solve-button" type="submit">
-                Найти квадрат <span aria-hidden="true">→</span>
+                <span id="solve-label">Найти квадрат</span><span class="button-arrow" aria-hidden="true">→</span>
               </button>
               <button class="secondary-button" id="stop-button" type="button" hidden>Остановить</button>
             </div>
-            <p class="runtime-note">Python загрузится только после запуска поиска.</p>
+            <p class="runtime-note" id="runtime-note">Python загрузится только после запуска поиска.</p>
           </form>
 
           <section class="result-panel" aria-labelledby="result-title">
@@ -93,9 +120,18 @@
               </div>
 
               <div class="result-copy">
+                <div class="solution-summary" id="solution-summary" aria-live="polite" hidden>
+                  <strong id="solution-count">0</strong>
+                  <span id="solution-count-label">решений найдено</span>
+                </div>
                 <p class="result-message" id="result-message" role="status" aria-live="polite">
                   Введите слова и запустите поиск. Если решение существует, здесь появятся поле и маршруты.
                 </p>
+                <div class="solution-navigation" id="solution-navigation" hidden>
+                  <button id="previous-solution" type="button" aria-label="Предыдущее решение">←</button>
+                  <span><strong id="solution-position">1</strong> из <span id="stored-solutions">1</span> показанных</span>
+                  <button id="next-solution" type="button" aria-label="Следующее решение">→</button>
+                </div>
                 <div class="word-paths" id="word-paths" aria-label="Маршруты слов"></div>
                 <p class="result-stats" id="result-stats"></p>
               </div>
@@ -129,6 +165,6 @@
         <span>Python · WebAssembly</span>
       </footer>
     </div>
-    <script type="module" src="./app.js?v=1"></script>
+    <script type="module" src="./app.js?v=2"></script>
   </body>
 </html>

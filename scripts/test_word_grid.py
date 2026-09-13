@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 import sys
 
@@ -40,7 +41,7 @@ def assert_solution(solver, words: str) -> dict:
 def main() -> None:
     solver = load_solver()
 
-    assert_solution(solver, "кино\nнота\nморе\nслед\nугол")
+    assert_solution(solver, "кино\nнота\nморе\nслед\nугол\nёж")
     nested = assert_solution(solver, "скотина\nкот\nток")
     assert nested["stats"]["removed_words"] == 2
     assert_solution(solver, "топот\nпотоп")
@@ -59,6 +60,35 @@ def main() -> None:
 
     invalid = solver.solve("два слова")
     assert invalid["status"] == "invalid"
+
+    updates: list[str] = []
+    sparse = solver.enumerate_solutions("а", 5, 100, 10, updates.append)
+    assert sparse["status"] == "complete" and sparse["exact"] is True
+    assert sparse["count"] == sparse["stored_count"] == 3
+    streamed = [json.loads(update) for update in updates]
+    assert [update["count"] for update in streamed] == [1, 2, 3]
+    assert all(sum(bool(letter) for letter in update["solution"]["board"]) == 1 for update in streamed)
+
+    # The two path directions of the repeated-letter word produce the same
+    # visible board and must not be counted separately.
+    repeated = solver.enumerate_solutions("аа", 5, 100, 10)
+    assert repeated["status"] == "complete" and repeated["count"] == 8
+
+    full_board_updates: list[str] = []
+    limited = solver.enumerate_solutions(
+        "abcdefghijklmnop",
+        5,
+        2,
+        2,
+        full_board_updates.append,
+    )
+    assert limited["status"] == "partial" and limited["exact"] is False
+    assert limited["count"] == 2 and limited["stop_reason"] == "limit"
+    assert len(full_board_updates) == 2
+    assert all(
+        all(json.loads(update)["solution"]["board"])
+        for update in full_board_updates
+    )
     print("OK: word-grid solver cases passed")
 
 

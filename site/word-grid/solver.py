@@ -18,6 +18,7 @@ search: ``unsatisfiable`` means that every possible assignment was rejected.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from collections import Counter, defaultdict, deque
 import json
 import re
@@ -32,6 +33,8 @@ ROOT_CELL_ORBITS = (0, 1, 5)  # corner, non-corner edge, inner cell
 MAX_WORDS = 80
 MAX_ESSENTIAL_POSITIONS = 320
 DEFAULT_TIME_LIMIT_SECONDS = 20.0
+DEFAULT_DISPLAY_LIMIT = 200
+DEFAULT_MAX_UNIQUE_SOLUTIONS = 100_000
 
 
 def _build_neighbour_masks() -> tuple[int, ...]:
@@ -55,8 +58,49 @@ NEIGHBOUR_MASKS = _build_neighbour_masks()
 WORD_SPLITTER = re.compile(r"[\n,;]+")
 
 
+def _build_symmetry_maps() -> tuple[tuple[int, ...], ...]:
+    """Map old cell indices to all eight rotations/reflections of the square."""
+
+    maps: list[tuple[int, ...]] = []
+    for reflected in (False, True):
+        for rotations in range(4):
+            mapping: list[int] = []
+            for cell in range(CELL_COUNT):
+                row, column = divmod(cell, GRID_SIDE)
+                if reflected:
+                    column = GRID_SIDE - 1 - column
+                for _ in range(rotations):
+                    row, column = column, GRID_SIDE - 1 - row
+                mapping.append(row * GRID_SIDE + column)
+            candidate = tuple(mapping)
+            if candidate not in maps:
+                maps.append(candidate)
+    return tuple(maps)
+
+
+SYMMETRY_MAPS = _build_symmetry_maps()
+
+
+def _canonical_board(owners: list[str | None]) -> tuple[str, ...]:
+    """Return one stable representative of a board's symmetry class."""
+
+    variants: list[tuple[str, ...]] = []
+    for mapping in SYMMETRY_MAPS:
+        transformed = [""] * CELL_COUNT
+        for old_cell, new_cell in enumerate(mapping):
+            transformed[new_cell] = owners[old_cell] or ""
+        variants.append(tuple(transformed))
+    # Empty cells sort last so sparse side-effect cases stay visually anchored
+    # near the upper-left corner instead of drifting to the lower-right.
+    return min(variants, key=lambda board: tuple(letter or "\U0010ffff" for letter in board))
+
+
 class SearchTimedOut(Exception):
     """Raised when a bounded browser search reaches its deadline."""
+
+
+class SolutionLimitReached(Exception):
+    """Raised after the configured number of unique boards was collected."""
 
 
 class InputError(ValueError):
@@ -164,6 +208,17 @@ def _find_word_path(board: list[str], word: str) -> list[int] | None:
     return None
 
 
+def _solution_payload(board: tuple[str, ...], words: list[str]) -> dict:
+    paths = []
+    board_list = list(board)
+    for word in words:
+        path = _find_word_path(board_list, word)
+        if path is None:  # Defensive assertion: a solved CSP must expose every path.
+            raise AssertionError(f"Could not recover the path for {word!r}")
+        paths.append({"word": word, "path": path})
+    return {"board": board_list, "words": paths}
+
+
 class WordGridCsp:
     """Specialised CSP with 16-bit domains and exact backtracking."""
 
@@ -199,6 +254,7 @@ class WordGridCsp:
 
         self.nodes_visited = 0
         self.failed_states: set[tuple[int, ...]] = set()
+        self.seen_boards: set[tuple[str, ...]] = set()
         self.neighbour_union_cache: dict[int, int] = {0: 0}
 
     def _check_deadline(self) -> None:
@@ -456,35 +512,102 @@ class WordGridCsp:
             self.failed_states.add(state_key)
         return None
 
-    def solve(self) -> tuple[list[int], list[str | None]] | None:
+    def _enumerate_search(
+        self,
+        domains: list[int],
+        owners: list[str | None],
+        depth: int,
+        on_unique_board: Callable[[tuple[str, ...], int], None],
+        max_solutions: int,
+    ) -> bool:
+        """Visit every leaf, returning whether this subtree had any CSP solution."""
+
+        self.nodes_visited += 1
+        self._check_deadline()
+
+        state_key = tuple(domains)
+        if state_key in self.failed_states:
+            return False
+
+        variable = self._choose_variable(domains)
+        if variable is None:
+            board = _canonical_board(owners)
+            if board not in self.seen_boards:
+                self.seen_boards.add(board)
+                on_unique_board(board, len(self.seen_boards))
+                if len(self.seen_boards) >= max_solutions:
+                    raise SolutionLimitReached
+            return True
+
+        found_assignment = False
+        for cell in self._ordered_cells(variable, domains, root=depth == 0):
+            next_domains = domains.copy()
+            next_owners = owners.copy()
+            next_domains[variable] = 1 << cell
+            if self._propagate(next_domains, next_owners, [variable]):
+                found_assignment = self._enumerate_search(
+                    next_domains,
+                    next_owners,
+                    depth + 1,
+                    on_unique_board,
+                    max_solutions,
+                ) or found_assignment
+
+        if not found_assignment and len(self.failed_states) < 100_000:
+            self.failed_states.add(state_key)
+        return found_assignment
+
+    def _initial_state(self) -> tuple[list[int], list[str | None]] | None:
         domains = [ALL_CELLS] * len(self.letters)
         owners: list[str | None] = [None] * CELL_COUNT
         if not all(_has_distinct_matching(variables, domains) for variables in self.word_variables):
             return None
         if not self._capacity_possible(domains, owners):
             return None
+        return domains, owners
+
+    def solve(self) -> tuple[list[int], list[str | None]] | None:
+        initial_state = self._initial_state()
+        if initial_state is None:
+            return None
+        domains, owners = initial_state
         return self._search(domains, owners, 0)
 
+    def enumerate_solutions(
+        self,
+        on_unique_board: Callable[[tuple[str, ...], int], None],
+        max_solutions: int,
+    ) -> tuple[bool, str | None]:
+        """Enumerate unique boards; return completion and an optional stop reason."""
 
-def solve(raw_words: str, time_limit_seconds: float = DEFAULT_TIME_LIMIT_SECONDS) -> dict:
-    """Solve submitted words and return a JSON-friendly result dictionary."""
+        self.seen_boards.clear()
+        initial_state = self._initial_state()
+        if initial_state is None:
+            return True, None
+        domains, owners = initial_state
+        try:
+            self._enumerate_search(domains, owners, 0, on_unique_board, max_solutions)
+        except SolutionLimitReached:
+            return False, "limit"
+        return True, None
 
-    started = time.perf_counter()
+
+def _prepare_problem(raw_words: str) -> tuple[dict | None, dict | None]:
     try:
         words = _normalise_words(raw_words)
     except InputError as error:
-        return {"status": "invalid", "message": str(error)}
+        return None, {"status": "invalid", "message": str(error)}
 
     longest = max(words, key=len)
     if len(longest) > CELL_COUNT:
-        return {
+        return None, {
             "status": "unsatisfiable",
             "message": f"Слово «{longest}» длиннее 16 букв, поэтому не помещается без повторной клетки.",
         }
 
     unique_letters = set("".join(words))
     if len(unique_letters) > CELL_COUNT:
-        return {
+        return None, {
             "status": "unsatisfiable",
             "message": f"В словах {len(unique_letters)} разных букв, а клеток только 16.",
         }
@@ -492,7 +615,7 @@ def solve(raw_words: str, time_limit_seconds: float = DEFAULT_TIME_LIMIT_SECONDS
     minimum_letter_cells = _necessary_cell_counts(words)
     minimum_cells = sum(minimum_letter_cells.values())
     if minimum_cells > CELL_COUNT:
-        return {
+        return None, {
             "status": "unsatisfiable",
             "message": (
                 f"Из-за повторов букв нужно минимум {minimum_cells} клеток. "
@@ -503,7 +626,7 @@ def solve(raw_words: str, time_limit_seconds: float = DEFAULT_TIME_LIMIT_SECONDS
     essential = _essential_words(words)
     variable_count = sum(map(len, essential))
     if variable_count > MAX_ESSENTIAL_POSITIONS:
-        return {
+        return None, {
             "status": "invalid",
             "message": (
                 "После удаления вложенных слов осталось слишком много позиций для браузерного поиска "
@@ -511,35 +634,65 @@ def solve(raw_words: str, time_limit_seconds: float = DEFAULT_TIME_LIMIT_SECONDS
             ),
         }
 
+    return {
+        "words": words,
+        "essential": essential,
+        "minimum_letter_cells": minimum_letter_cells,
+        "minimum_cells": minimum_cells,
+        "unique_letters": len(unique_letters),
+        "variable_count": variable_count,
+    }, None
+
+
+def _base_stats(problem: dict, solver: WordGridCsp, started: float) -> dict:
+    return {
+        "elapsed_ms": round((time.perf_counter() - started) * 1000),
+        "nodes": solver.nodes_visited,
+        "variables": problem["variable_count"],
+        "essential_words": len(problem["essential"]),
+        "removed_words": len(problem["words"]) - len(problem["essential"]),
+        "minimum_cells": problem["minimum_cells"],
+        "unique_letters": problem["unique_letters"],
+    }
+
+
+def _unique_solution_phrase(count: int) -> str:
+    if count % 10 == 1 and count % 100 != 11:
+        return f"{count} уникальное решение"
+    if count % 10 in (2, 3, 4) and count % 100 not in (12, 13, 14):
+        return f"{count} уникальных решения"
+    return f"{count} уникальных решений"
+
+
+def solve(raw_words: str, time_limit_seconds: float = DEFAULT_TIME_LIMIT_SECONDS) -> dict:
+    """Find one board and return a JSON-friendly result dictionary."""
+
+    started = time.perf_counter()
+    problem, error = _prepare_problem(raw_words)
+    if error is not None:
+        return error
+    assert problem is not None
+
     time_limit_seconds = max(0.1, float(time_limit_seconds))
     solver = WordGridCsp(
-        essential,
-        minimum_letter_cells,
+        problem["essential"],
+        problem["minimum_letter_cells"],
         deadline=started + time_limit_seconds,
     )
 
     try:
         solution = solver.solve()
     except SearchTimedOut:
-        elapsed_ms = round((time.perf_counter() - started) * 1000)
         return {
             "status": "timeout",
             "message": (
                 f"За {time_limit_seconds:g} с не удалось ни найти квадрат, ни доказать, что его нет. "
                 "Поиск можно остановить без зависания страницы и запустить для меньшего набора."
             ),
-            "stats": {"elapsed_ms": elapsed_ms, "nodes": solver.nodes_visited},
+            "stats": _base_stats(problem, solver, started),
         }
 
-    elapsed_ms = round((time.perf_counter() - started) * 1000)
-    base_stats = {
-        "elapsed_ms": elapsed_ms,
-        "nodes": solver.nodes_visited,
-        "variables": variable_count,
-        "essential_words": len(essential),
-        "removed_words": len(words) - len(essential),
-        "minimum_cells": minimum_cells,
-    }
+    base_stats = _base_stats(problem, solver, started)
 
     if solution is None:
         return {
@@ -548,23 +701,110 @@ def solve(raw_words: str, time_limit_seconds: float = DEFAULT_TIME_LIMIT_SECONDS
             "stats": base_stats,
         }
 
-    domains, owners = solution
-    filler = min(Counter("".join(words)).items(), key=lambda item: (-item[1], item[0]))[0]
-    board = [letter if letter is not None else filler for letter in owners]
-
-    paths = []
-    for word in words:
-        path = _find_word_path(board, word)
-        if path is None:  # Defensive assertion: a solved CSP must expose every path.
-            raise AssertionError(f"Could not recover the path for {word!r}")
-        paths.append({"word": word, "path": path})
+    _, owners = solution
+    payload = _solution_payload(_canonical_board(owners), problem["words"])
 
     return {
         "status": "solved",
         "message": "Квадрат найден. Выберите слово, чтобы увидеть порядок клеток.",
-        "board": board,
-        "words": paths,
         "stats": base_stats,
+        **payload,
+    }
+
+
+def enumerate_solutions(
+    raw_words: str,
+    time_limit_seconds: float = DEFAULT_TIME_LIMIT_SECONDS,
+    max_solutions: int = DEFAULT_MAX_UNIQUE_SOLUTIONS,
+    display_limit: int = DEFAULT_DISPLAY_LIMIT,
+    on_update: Callable[[str], object] | None = None,
+) -> dict:
+    """Count unique boards and stream the first displayable solutions as JSON."""
+
+    started = time.perf_counter()
+    problem, error = _prepare_problem(raw_words)
+    if error is not None:
+        if error["status"] == "unsatisfiable":
+            return {**error, "count": 0, "exact": True, "stored_count": 0}
+        return error
+    assert problem is not None
+
+    time_limit_seconds = max(0.1, float(time_limit_seconds))
+    max_solutions = max(1, min(int(max_solutions), DEFAULT_MAX_UNIQUE_SOLUTIONS))
+    display_limit = max(1, min(int(display_limit), DEFAULT_DISPLAY_LIMIT))
+    solver = WordGridCsp(
+        problem["essential"],
+        problem["minimum_letter_cells"],
+        deadline=started + time_limit_seconds,
+    )
+    last_count_update = started
+
+    def emit(payload: dict) -> None:
+        if on_update is not None:
+            on_update(json.dumps(payload, ensure_ascii=False))
+
+    def on_unique_board(board: tuple[str, ...], count: int) -> None:
+        nonlocal last_count_update
+        now = time.perf_counter()
+        if count <= display_limit:
+            emit({
+                "event": "solution",
+                "count": count,
+                "solution": _solution_payload(board, problem["words"]),
+            })
+            last_count_update = now
+        elif count % 100 == 0 or now - last_count_update >= 0.15:
+            emit({"event": "count", "count": count})
+            last_count_update = now
+
+    completed = False
+    stop_reason: str | None = None
+    try:
+        completed, stop_reason = solver.enumerate_solutions(on_unique_board, max_solutions)
+    except SearchTimedOut:
+        stop_reason = "timeout"
+
+    count = len(solver.seen_boards)
+    stats = _base_stats(problem, solver, started)
+    stored_count = min(count, display_limit)
+
+    if completed and count == 0:
+        return {
+            "status": "unsatisfiable",
+            "message": "Заполнения нет: точный поиск перебрал все допустимые варианты.",
+            "count": 0,
+            "exact": True,
+            "stored_count": 0,
+            "stats": stats,
+        }
+    if completed:
+        return {
+            "status": "complete",
+            "message": f"Поиск завершён: найдено {_unique_solution_phrase(count)}.",
+            "count": count,
+            "exact": True,
+            "stored_count": stored_count,
+            "stats": stats,
+        }
+
+    if stop_reason == "limit":
+        message = (
+            f"Найдено решений: не менее {count} — достигнут защитный предел. "
+            f"Для просмотра сохранены первые {stored_count}."
+        )
+    else:
+        message = (
+            f"За {time_limit_seconds:g} с найдено решений: не менее {count}; полный обход не завершён. "
+            f"Для просмотра сохранены первые {stored_count}."
+        )
+    return {
+        "status": "partial" if count else "timeout",
+        "message": message,
+        "count": count,
+        "exact": False,
+        "stored_count": stored_count,
+        "stop_reason": stop_reason,
+        "stats": stats,
     }
 
 
@@ -572,3 +812,22 @@ def solve_json(raw_words: str, time_limit_seconds: float = DEFAULT_TIME_LIMIT_SE
     """Stable string boundary used by the JavaScript worker."""
 
     return json.dumps(solve(raw_words, time_limit_seconds), ensure_ascii=False)
+
+
+def enumerate_json(
+    raw_words: str,
+    time_limit_seconds: float = DEFAULT_TIME_LIMIT_SECONDS,
+    max_solutions: int = DEFAULT_MAX_UNIQUE_SOLUTIONS,
+    display_limit: int = DEFAULT_DISPLAY_LIMIT,
+    on_update: Callable[[str], object] | None = None,
+) -> str:
+    """Streaming JSON boundary used by the JavaScript worker."""
+
+    result = enumerate_solutions(
+        raw_words,
+        time_limit_seconds,
+        max_solutions,
+        display_limit,
+        on_update,
+    )
+    return json.dumps(result, ensure_ascii=False)
