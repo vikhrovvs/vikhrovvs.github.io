@@ -8,24 +8,32 @@ async function getSolver() {
       self.postMessage({ type: 'progress', stage: 'loading' });
       const [pyodide, response] = await Promise.all([
         loadPyodide(),
-        fetch('./solver.py?v=4'),
+        fetch('./solver.py?v=5'),
       ]);
       if (!response.ok) throw new Error('Не удалось загрузить Python-алгоритм.');
       const source = await response.text();
       pyodide.runPython(source);
       const enumerateJson = pyodide.globals.get('enumerate_json');
+      const evaluateJson = pyodide.globals.get('evaluate_json');
       self.postMessage({ type: 'progress', stage: 'ready' });
-      return { enumerateJson };
+      return { enumerateJson, evaluateJson };
     })();
   }
   return solverPromise;
 }
 
 self.addEventListener('message', async (event) => {
-  if (event.data?.type !== 'solve') return;
+  if (!['solve', 'evaluate'].includes(event.data?.type)) return;
   const requestId = event.data.requestId;
   try {
     const solver = await getSolver();
+    if (event.data.type === 'evaluate') {
+      const resultProxy = solver.evaluateJson(event.data.board, event.data.words);
+      const result = JSON.parse(String(resultProxy));
+      resultProxy.destroy?.();
+      self.postMessage({ type: 'evaluation-result', requestId, result });
+      return;
+    }
     self.postMessage({
       type: 'progress',
       stage: 'enumerating',

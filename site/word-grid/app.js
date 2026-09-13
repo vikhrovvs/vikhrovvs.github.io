@@ -24,6 +24,17 @@ const averageComplexity = document.querySelector('#average-complexity');
 const solutionHighlights = document.querySelector('#solution-highlights');
 const firstSolutionButton = document.querySelector('#first-solution');
 const bestSolutionButton = document.querySelector('#best-solution');
+const evaluateConfigurationButton = document.querySelector('#evaluate-configuration');
+const configurationEvaluator = document.querySelector('#configuration-evaluator');
+const configurationInput = document.querySelector('#configuration-input');
+const evaluateButton = document.querySelector('#evaluate-button');
+const configurationMessage = document.querySelector('#configuration-message');
+const evaluationComparison = document.querySelector('#evaluation-comparison');
+const evaluatedAverage = document.querySelector('#evaluated-average');
+const bestAverage = document.querySelector('#best-average');
+const medianAverage = document.querySelector('#median-average');
+const bottomAverage = document.querySelector('#bottom-average');
+const comparisonNote = document.querySelector('#comparison-note');
 
 const TIME_LIMIT_SECONDS = 20;
 const DISPLAY_LIMIT = 200;
@@ -41,12 +52,23 @@ let currentCollection = 'gallery';
 let currentSolutionIndex = -1;
 let reportedCount = 0;
 let enumerationExact = false;
+let averageBenchmarks = null;
+let benchmarkWordsKey = '';
+let activeSearchWordsKey = '';
+let evaluatedWordsKey = '';
+let activeRequestType = 'solve';
 
 function parseVisibleWords(value) {
   return value
     .split(/[\n,;]+/u)
     .map((word) => word.trim())
     .filter(Boolean);
+}
+
+function normalisedWordsKey(value) {
+  return [...new Set(
+    parseVisibleWords(value).map((word) => word.toLocaleLowerCase('ru-RU').normalize('NFC')),
+  )].join('\n');
 }
 
 function pluralForm(count, forms) {
@@ -83,7 +105,21 @@ function setStatus(state, label, message) {
 function setBusy(isBusy) {
   wordsInput.disabled = isBusy;
   solveButton.disabled = isBusy;
+  configurationInput.disabled = isBusy;
+  evaluateButton.disabled = isBusy;
+  evaluateConfigurationButton.disabled = isBusy;
   stopButton.hidden = !isBusy;
+}
+
+function setEvaluationBusy(isBusy) {
+  wordsInput.disabled = isBusy;
+  solveButton.disabled = isBusy;
+  configurationInput.disabled = isBusy;
+  evaluateButton.disabled = isBusy;
+  firstSolutionButton.disabled = isBusy;
+  bestSolutionButton.disabled = isBusy;
+  evaluateConfigurationButton.disabled = isBusy;
+  stopButton.hidden = true;
 }
 
 function updateSolutionCount({ exact = false, running = false } = {}) {
@@ -97,7 +133,7 @@ function updateSolutionCount({ exact = false, running = false } = {}) {
 
 function updateNavigation() {
   const collection = currentSolutions();
-  const shouldShow = collection.length > 0 && currentCollection !== 'best';
+  const shouldShow = collection.length > 0 && ['gallery', 'ranked'].includes(currentCollection);
   solutionNavigation.hidden = !shouldShow;
   if (!shouldShow) return;
   solutionPosition.textContent = String(currentSolutionIndex + 1);
@@ -113,7 +149,14 @@ function updateHighlights() {
   const best = rankedBest ?? liveBestSolution;
   const hasFirst = Boolean(first);
   const hasBest = Boolean(best);
-  solutionHighlights.hidden = !hasFirst || !hasBest;
+  solutionHighlights.hidden = false;
+  firstSolutionButton.hidden = !hasFirst;
+  bestSolutionButton.hidden = !hasFirst || !hasBest;
+  evaluateConfigurationButton.hidden = false;
+  evaluateConfigurationButton.setAttribute(
+    'aria-pressed',
+    String(currentCollection === 'evaluation'),
+  );
   if (!hasFirst || !hasBest) return;
 
   const bestIsFirst = boardKey(first) === boardKey(best);
@@ -145,7 +188,11 @@ function resetBoard() {
   resultStats.textContent = '';
   solutionSummary.hidden = true;
   solutionComplexity.hidden = true;
-  solutionHighlights.hidden = true;
+  configurationEvaluator.hidden = true;
+  evaluationComparison.hidden = true;
+  configurationMessage.dataset.state = '';
+  configurationMessage.textContent = 'Введите четыре строки по четыре буквы. Пробелы между буквами допустимы.';
+  comparisonNote.textContent = '';
   solutionNavigation.hidden = true;
   latestResult = null;
   selectedWordIndex = -1;
@@ -156,12 +203,23 @@ function resetBoard() {
   currentSolutionIndex = -1;
   reportedCount = 0;
   enumerationExact = false;
+  averageBenchmarks = null;
+  benchmarkWordsKey = '';
+  evaluatedWordsKey = '';
+  updateHighlights();
 }
 
 function handleWorkerFailure(message, failedWorker) {
   failedWorker?.terminate();
   if (worker === failedWorker) worker = null;
   setBusy(false);
+  setEvaluationBusy(false);
+  if (activeRequestType === 'evaluate') {
+    configurationMessage.dataset.state = 'error';
+    configurationMessage.textContent = message;
+    setStatus('failed', 'ошибка оценки', message);
+    return;
+  }
   if (reportedCount > 0) {
     updateSolutionCount({ exact: false });
     setStatus('partial', 'подсчёт прерван', `Найдено решений: не менее ${reportedCount.toLocaleString('ru-RU')}. ${message}`);
@@ -172,7 +230,7 @@ function handleWorkerFailure(message, failedWorker) {
 
 function ensureWorker() {
   if (worker) return worker;
-  const nextWorker = new Worker('./worker.js?v=4', { type: 'module' });
+  const nextWorker = new Worker('./worker.js?v=5', { type: 'module' });
   worker = nextWorker;
   nextWorker.addEventListener('message', handleWorkerMessage);
   nextWorker.addEventListener('error', () => {
@@ -253,19 +311,11 @@ function highlightWord(index) {
 function currentSolutions() {
   if (currentCollection === 'ranked') return rankedSolutions;
   if (currentCollection === 'best') return liveBestSolution ? [liveBestSolution] : [];
+  if (currentCollection === 'evaluation') return [];
   return gallerySolutions;
 }
 
-function renderSolutionAt(index, collection = currentCollection) {
-  const candidates = collection === 'ranked'
-    ? rankedSolutions
-    : collection === 'best'
-      ? liveBestSolution ? [liveBestSolution] : []
-      : gallerySolutions;
-  const result = candidates[index];
-  if (!result) return;
-  currentCollection = collection;
-  currentSolutionIndex = index;
+function renderSolution(result) {
   latestResult = result;
   boardGrid.innerHTML = result.board
     .map((letter) => `<span data-used="${String(Boolean(letter))}"${letter ? '' : ' aria-label="Пустая клетка"'}>${escapeHtml(letter)}</span>`)
@@ -286,8 +336,100 @@ function renderSolutionAt(index, collection = currentCollection) {
   highlightWord(0);
 }
 
+function renderSolutionAt(index, collection = currentCollection) {
+  const candidates = collection === 'ranked'
+    ? rankedSolutions
+    : collection === 'best'
+      ? liveBestSolution ? [liveBestSolution] : []
+      : gallerySolutions;
+  const result = candidates[index];
+  if (!result) return;
+  configurationEvaluator.hidden = true;
+  currentCollection = collection;
+  currentSolutionIndex = index;
+  renderSolution(result);
+  if (!wordsInput.disabled && reportedCount > 0) {
+    statusBadge.dataset.state = enumerationExact ? 'solved' : 'partial';
+    statusBadge.textContent = enumerationExact ? 'все решения найдены' : 'результаты поиска';
+  }
+}
+
 function boardKey(solution) {
   return solution.board.join('\u0001');
+}
+
+function boardAsInput(board) {
+  return Array.from({ length: 4 }, (_, row) => board.slice(row * 4, row * 4 + 4).join('')).join('\n');
+}
+
+function renderEvaluationComparison(ownAverage) {
+  evaluatedAverage.textContent = formatComplexity(ownAverage);
+  const comparable = averageBenchmarks && benchmarkWordsKey === normalisedWordsKey(wordsInput.value);
+  if (comparable) {
+    bestAverage.textContent = formatComplexity(averageBenchmarks.best);
+    medianAverage.textContent = formatComplexity(averageBenchmarks.median);
+    bottomAverage.textContent = formatComplexity(averageBenchmarks.bottom_100_average);
+    const bottomWord = pluralForm(averageBenchmarks.bottom_count, ['полю', 'полям', 'полям']);
+    const scope = enumerationExact ? 'все решения полного обхода' : 'только найденные решения';
+    comparisonNote.textContent = `Сравнение охватывает ${scope} (${averageBenchmarks.sample_count.toLocaleString('ru-RU')}); последний ориентир усреднён по ${averageBenchmarks.bottom_count} наименее запутанным ${bottomWord}.`;
+  } else {
+    bestAverage.textContent = '—';
+    medianAverage.textContent = '—';
+    bottomAverage.textContent = '—';
+    comparisonNote.textContent = 'Чтобы появились ориентиры, запустите и дождитесь подсчёта решений для этих же слов.';
+  }
+  evaluationComparison.hidden = false;
+}
+
+function openConfigurationEvaluator() {
+  currentCollection = 'evaluation';
+  currentSolutionIndex = -1;
+  configurationEvaluator.hidden = false;
+  solutionComplexity.hidden = true;
+  solutionNavigation.hidden = true;
+  pathOverlay.replaceChildren();
+  wordPaths.replaceChildren();
+  [...boardGrid.children].forEach((cell) => {
+    cell.dataset.path = 'false';
+    cell.querySelector('small')?.remove();
+  });
+  if (!configurationInput.value.trim() && latestResult?.board?.every(Boolean)) {
+    configurationInput.value = boardAsInput(latestResult.board);
+  }
+  if (evaluatedWordsKey !== normalisedWordsKey(wordsInput.value)) {
+    evaluationComparison.hidden = true;
+    comparisonNote.textContent = '';
+    configurationMessage.dataset.state = '';
+    configurationMessage.textContent = 'Введите четыре строки по четыре буквы. Пробелы между буквами допустимы.';
+  }
+  setStatus('idle', 'готов к оценке', 'Введите конфигурацию; Python проверит все слова и выберет для каждого самый простой маршрут.');
+  updateNavigation();
+  updateHighlights();
+  configurationInput.focus();
+}
+
+function finishEvaluation(result) {
+  setEvaluationBusy(false);
+  currentCollection = 'evaluation';
+  currentSolutionIndex = -1;
+  configurationEvaluator.hidden = false;
+  if (result.status !== 'evaluated') {
+    configurationMessage.dataset.state = 'error';
+    configurationMessage.textContent = result.message;
+    evaluationComparison.hidden = true;
+    setStatus('failed', 'не удалось оценить', result.message);
+    updateNavigation();
+    updateHighlights();
+    return;
+  }
+
+  evaluatedWordsKey = normalisedWordsKey(wordsInput.value);
+  configurationMessage.dataset.state = '';
+  configurationMessage.textContent = result.message;
+  renderSolution(result);
+  configurationEvaluator.hidden = false;
+  renderEvaluationComparison(result.complexity.average);
+  setStatus('solved', 'конфигурация оценена');
 }
 
 function registerBestSolution(solution) {
@@ -323,6 +465,8 @@ function acceptEnumerationUpdate(update) {
 function finishEnumeration(result) {
   reportedCount = result.count ?? reportedCount;
   enumerationExact = Boolean(result.exact);
+  averageBenchmarks = result.average_benchmarks ?? null;
+  benchmarkWordsKey = averageBenchmarks ? activeSearchWordsKey : '';
   const wasViewingBest = currentCollection === 'best';
   rankedSolutions = Array.isArray(result.top_solutions) ? result.top_solutions : [];
   liveBestSolution = rankedSolutions[0] ?? result.best_solution ?? liveBestSolution;
@@ -353,11 +497,16 @@ function handleWorkerMessage(event) {
 
   if (data.type === 'progress') {
     if (data.stage === 'loading') {
-      setStatus('solving', 'загрузка Python', 'Первый запуск загружает Python-среду. Следующие поиски начнутся сразу.');
+      const action = activeRequestType === 'evaluate' ? 'оценки' : 'поиска';
+      setStatus('solving', 'загрузка Python', `Первый запуск загружает Python-среду. Следующие ${action} начнутся сразу.`);
     } else if (data.stage === 'enumerating') {
       setStatus('solving', 'ищем первое решение', 'Первое найденное поле появится сразу, затем подсчёт продолжится.');
     } else if (data.stage === 'ready' || data.stage === 'solving') {
-      setStatus('solving', 'идёт поиск', 'Ограничения распространяются по клеткам; невозможные ветви отсекаются сразу.');
+      if (activeRequestType === 'evaluate') {
+        setStatus('solving', 'оцениваем', 'Для каждого слова ищем самое простое допустимое вхождение.');
+      } else {
+        setStatus('solving', 'идёт поиск', 'Ограничения распространяются по клеткам; невозможные ветви отсекаются сразу.');
+      }
     }
     return;
   }
@@ -372,6 +521,11 @@ function handleWorkerMessage(event) {
     return;
   }
 
+  if (data.type === 'evaluation-result') {
+    finishEvaluation(data.result);
+    return;
+  }
+
   if (data.type !== 'result') return;
   setBusy(false);
   finishEnumeration(data.result);
@@ -381,6 +535,8 @@ form.addEventListener('submit', (event) => {
   event.preventDefault();
   requestId += 1;
   resetBoard();
+  activeRequestType = 'solve';
+  activeSearchWordsKey = normalisedWordsKey(wordsInput.value);
   setBusy(true);
   setStatus('solving', 'подготовка', 'Проверяем слова и готовим точный поиск.');
   ensureWorker().postMessage({
@@ -418,5 +574,36 @@ firstSolutionButton.addEventListener('click', () => renderSolutionAt(0, 'gallery
 bestSolutionButton.addEventListener('click', () => {
   renderSolutionAt(0, rankedSolutions.length ? 'ranked' : 'best');
 });
-wordsInput.addEventListener('input', updateWordCount);
+evaluateConfigurationButton.addEventListener('click', openConfigurationEvaluator);
+configurationEvaluator.addEventListener('submit', (event) => {
+  event.preventDefault();
+  requestId += 1;
+  activeRequestType = 'evaluate';
+  setEvaluationBusy(true);
+  configurationMessage.dataset.state = '';
+  configurationMessage.textContent = 'Проверяем маршруты слов и считаем запутанность…';
+  evaluationComparison.hidden = true;
+  setStatus('solving', 'оцениваем', 'Для каждого слова ищем самое простое допустимое вхождение.');
+  ensureWorker().postMessage({
+    type: 'evaluate',
+    requestId,
+    board: configurationInput.value,
+    words: wordsInput.value,
+  });
+});
+configurationInput.addEventListener('input', () => {
+  if (evaluationComparison.hidden) return;
+  evaluationComparison.hidden = true;
+  configurationMessage.dataset.state = '';
+  configurationMessage.textContent = 'Конфигурация изменилась — оцените её заново.';
+});
+wordsInput.addEventListener('input', () => {
+  updateWordCount();
+  if (currentCollection === 'evaluation' && evaluatedWordsKey !== normalisedWordsKey(wordsInput.value)) {
+    evaluationComparison.hidden = true;
+    configurationMessage.dataset.state = '';
+    configurationMessage.textContent = 'Список слов изменился — оцените конфигурацию заново.';
+  }
+});
 updateWordCount();
+updateHighlights();

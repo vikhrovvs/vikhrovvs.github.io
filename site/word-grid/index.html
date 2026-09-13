@@ -14,7 +14,7 @@
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2311130f'/%3E%3Cpath d='M7 7h8v8H7zm10 0h8v8h-8zM7 17h8v8H7zm10 0h8v8h-8z' fill='%23d8ff43'/%3E%3C/svg%3E"
     />
     <title>Словесный квадрат</title>
-    <link rel="stylesheet" href="./styles.css?v=4" />
+    <link rel="stylesheet" href="./styles.css?v=5" />
   </head>
   <body>
     <div class="app-shell">
@@ -88,6 +88,8 @@
                   <li>Каждый диагональный шаг даёт ещё 0,5 балла.</li>
                   <li>Сумма делится на число шагов в слове.</li>
                   <li>Поля сравниваются сначала по минимальному баллу слова, затем по среднему.</li>
+                  <li>Оценщик проверяет введённое поле по тем же словам и той же формуле.</li>
+                  <li>Его сравнительные ориентиры относятся именно к средней оценке поля.</li>
                 </ul>
               </div>
             </details>
@@ -136,7 +138,34 @@
                 <div class="solution-highlights" id="solution-highlights" aria-label="Особые решения" hidden>
                   <button id="first-solution" type="button" aria-pressed="true">Первое найденное</button>
                   <button id="best-solution" type="button" aria-pressed="false">Топ запутанных</button>
+                  <button id="evaluate-configuration" type="button" aria-pressed="false">Оценить конфигурацию</button>
                 </div>
+                <form class="configuration-evaluator" id="configuration-evaluator" hidden>
+                  <label class="configuration-field" for="configuration-input">
+                    Конфигурация 4 × 4
+                    <textarea
+                      id="configuration-input"
+                      rows="4"
+                      spellcheck="false"
+                      autocapitalize="off"
+                      placeholder="абвг&#10;дежз&#10;ийкл&#10;мноп"
+                    ></textarea>
+                  </label>
+                  <div class="configuration-actions">
+                    <button id="evaluate-button" type="submit">Оценить</button>
+                    <span>Используются слова из поля слева</span>
+                  </div>
+                  <p class="configuration-message" id="configuration-message" role="status" aria-live="polite">
+                    Введите четыре строки по четыре буквы. Пробелы между буквами допустимы.
+                  </p>
+                  <div class="evaluation-comparison" id="evaluation-comparison" hidden>
+                    <div><span>Эта конфигурация</span><strong id="evaluated-average">—</strong></div>
+                    <div><span>Лучшая средняя</span><strong id="best-average">—</strong></div>
+                    <div><span>Медианная средняя</span><strong id="median-average">—</strong></div>
+                    <div><span>Среднее нижних 100</span><strong id="bottom-average">—</strong></div>
+                  </div>
+                  <p class="comparison-note" id="comparison-note"></p>
+                </form>
                 <div class="solution-navigation" id="solution-navigation" hidden>
                   <button id="previous-solution" type="button" aria-label="Предыдущее решение">←</button>
                   <span><strong id="solution-position">1</strong> из <span id="stored-solutions">1</span> <span id="navigation-kind">показанных</span></span>
@@ -168,6 +197,14 @@
             </ol>
           </div>
         </section>
+
+        <aside class="salad-credit" aria-label="Благодарность создателям Салатика">
+          <p>
+            Я благодарен Inter Oves Locum Praesta за идею салатиков. Сгенерированный салатик можно
+            залить на <a href="https://interoves.com/salad/">interoves.com/salad</a>, предложить
+            опубликовать и/или поделиться с друзьями, а также порешать там другие салатики.
+          </p>
+        </aside>
       </main>
 
       <footer>
@@ -175,6 +212,6 @@
         <span>Python · WebAssembly</span>
       </footer>
     </div>
-    <script type="module" src="./app.js?v=4"></script>
+    <script type="module" src="./app.js?v=5"></script>
   </body>
 </html>

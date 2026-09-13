@@ -43,7 +43,18 @@ def assert_solution(solver, words: str) -> dict:
 def main() -> None:
     solver = load_solver()
 
-    assert_solution(solver, "кино\nнота\nморе\nслед\nугол\nёж")
+    sample_words = "кино\nнота\nморе\nслед\nугол\nёж"
+    sample_solution = assert_solution(solver, sample_words)
+    manual_board = "\n".join(
+        "".join(sample_solution["board"][start:start + 4])
+        for start in range(0, 16, 4)
+    )
+    evaluated = solver.evaluate_board(manual_board, sample_words)
+    assert evaluated["status"] == "evaluated"
+    assert evaluated["board"] == sample_solution["board"]
+    assert evaluated["complexity"] == sample_solution["complexity"]
+    assert solver.evaluate_board("коротко", sample_words)["status"] == "invalid"
+    assert solver.evaluate_board(manual_board, "несуществующее")["status"] == "not_solution"
     nested = assert_solution(solver, "скотина\nкот\nток")
     assert nested["stats"]["removed_words"] == 2
     assert_solution(solver, "топот\nпотоп")
@@ -79,6 +90,8 @@ def main() -> None:
         "mix_bonus": 1,
         "diagonal_steps": 1,
     }
+    assert solver._median_from_counts(solver.Counter({0.0: 2, 2.0: 1}), 3) == 0
+    assert solver._median_from_counts(solver.Counter({0.0: 1, 2.0: 1}), 2) == 1
 
     multi_path_board = [""] * 16
     for cell, letter in {0: "а", 1: "б", 2: "в", 4: "б", 5: "в"}.items():
@@ -92,6 +105,7 @@ def main() -> None:
     assert sparse["status"] == "complete" and sparse["exact"] is True
     assert sparse["count"] == sparse["stored_count"] == 3
     assert sparse["top_count"] == len(sparse["top_solutions"]) == 2
+    assert sparse["average_benchmarks"]["bottom_count"] == 3
     streamed = [json.loads(update) for update in updates]
     assert [update["count"] for update in streamed] == [1, 2, 3]
     assert all(sum(bool(letter) for letter in update["solution"]["board"]) == 1 for update in streamed)
@@ -113,6 +127,9 @@ def main() -> None:
     ]
     assert ranks == sorted(ranks, reverse=True)
     assert ranked["top_solutions"][0]["board"] == ranked["best_solution"]["board"]
+    benchmarks = ranked["average_benchmarks"]
+    assert benchmarks["sample_count"] == 221 and benchmarks["bottom_count"] == 100
+    assert benchmarks["bottom_100_average"] <= benchmarks["median"] <= benchmarks["best"]
     assert ranked["best_solution"]["complexity"]["minimum"] > first_rank
     assert any(update["event"] == "best" for update in ranking_events)
 

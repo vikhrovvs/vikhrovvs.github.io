@@ -36,6 +36,7 @@ MAX_ESSENTIAL_POSITIONS = 320
 DEFAULT_TIME_LIMIT_SECONDS = 20.0
 DEFAULT_DISPLAY_LIMIT = 200
 DEFAULT_TOP_LIMIT = 100
+DEFAULT_BOTTOM_LIMIT = 100
 DEFAULT_MAX_UNIQUE_SOLUTIONS = 100_000
 
 
@@ -131,6 +132,27 @@ def _normalise_words(raw_words: str) -> list[str]:
     if len(words) > MAX_WORDS:
         raise InputError(f"Сейчас поддерживается не больше {MAX_WORDS} разных слов за один поиск.")
     return words
+
+
+def _normalise_board(raw_board: str) -> tuple[str, ...]:
+    """Read a full 4 x 4 board while allowing common visual separators."""
+
+    normalised = unicodedata.normalize("NFC", raw_board.strip().lower())
+    allowed_separators = frozenset(" \t\r\n,;|/")
+    unexpected = sorted({
+        character
+        for character in normalised
+        if not character.isalpha() and character not in allowed_separators
+    })
+    if unexpected:
+        raise InputError("В конфигурации используйте только буквы, пробелы и переносы строк.")
+    board = tuple(character for character in normalised if character.isalpha())
+    if len(board) != CELL_COUNT:
+        raise InputError(
+            f"В конфигурации должно быть ровно 16 букв, сейчас их {len(board)}. "
+            "Удобнее всего ввести 4 строки по 4 буквы."
+        )
+    return board
 
 
 def _necessary_cell_counts(words: list[str]) -> dict[str, int]:
@@ -821,6 +843,78 @@ def _unique_solution_phrase(count: int) -> str:
     return f"{count} уникальных решений"
 
 
+def _median_from_counts(counts: Counter[float], total: int) -> float:
+    """Return the exact median of a frequency table without storing samples."""
+
+    if total <= 0:
+        raise ValueError("Median requires at least one value")
+    lower_index = (total - 1) // 2
+    upper_index = total // 2
+    seen = 0
+    lower_value: float | None = None
+    upper_value: float | None = None
+    for value in sorted(counts):
+        next_seen = seen + counts[value]
+        if lower_value is None and seen <= lower_index < next_seen:
+            lower_value = value
+        if seen <= upper_index < next_seen:
+            upper_value = value
+            break
+        seen = next_seen
+    assert lower_value is not None and upper_value is not None
+    return round((lower_value + upper_value) / 2, 6)
+
+
+def _average_benchmarks(
+    counts: Counter[float],
+    bottom_heap: list[float],
+    best_average: float | None,
+    total: int,
+) -> dict | None:
+    if total == 0 or best_average is None:
+        return None
+    bottom_values = [-value for value in bottom_heap]
+    return {
+        "best": best_average,
+        "median": _median_from_counts(counts, total),
+        "bottom_100_average": round(sum(bottom_values) / len(bottom_values), 6),
+        "bottom_count": len(bottom_values),
+        "sample_count": total,
+    }
+
+
+def evaluate_board(raw_board: str, raw_words: str) -> dict:
+    """Score a user-provided full board against the current word list."""
+
+    try:
+        board = _normalise_board(raw_board)
+        words = _normalise_words(raw_words)
+    except InputError as error:
+        return {"status": "invalid", "message": str(error)}
+
+    board_list = list(board)
+    positions = _letter_positions(board_list)
+    missing_words = [
+        word
+        for word in words
+        if len(word) > CELL_COUNT or _find_easiest_word_path(board_list, word, positions) is None
+    ]
+    if missing_words:
+        shown = ", ".join(f"«{word}»" for word in missing_words[:5])
+        remainder = len(missing_words) - 5
+        suffix = f" и ещё {remainder}" if remainder > 0 else ""
+        return {
+            "status": "not_solution",
+            "message": f"В этой конфигурации не читаются слова: {shown}{suffix}.",
+        }
+
+    return {
+        "status": "evaluated",
+        "message": "Конфигурация подходит: все слова читаются по правилам.",
+        **_solution_payload(board, words),
+    }
+
+
 def solve(raw_words: str, time_limit_seconds: float = DEFAULT_TIME_LIMIT_SECONDS) -> dict:
     """Find one board and return a JSON-friendly result dictionary."""
 
@@ -890,6 +984,7 @@ def enumerate_solutions(
                 "stored_count": 0,
                 "top_count": 0,
                 "top_solutions": [],
+                "average_benchmarks": None,
             }
         return error
     assert problem is not None
@@ -908,13 +1003,16 @@ def enumerate_solutions(
     best_solution: dict | None = None
     best_discovery_index = 0
     top_heap: list[tuple[float, float, int, tuple[str, ...]]] = []
+    average_counts: Counter[float] = Counter()
+    bottom_average_heap: list[float] = []
+    best_average: float | None = None
 
     def emit(payload: dict) -> None:
         if on_update is not None:
             on_update(json.dumps(payload, ensure_ascii=False))
 
     def on_unique_board(board: tuple[str, ...], count: int) -> None:
-        nonlocal best_discovery_index, best_rank, best_solution, last_count_update
+        nonlocal best_average, best_discovery_index, best_rank, best_solution, last_count_update
         now = time.perf_counter()
         complexity = _board_complexity(
             board,
@@ -925,6 +1023,13 @@ def enumerate_solutions(
             complexity["minimum"],
             complexity["average"],
         )
+        average = complexity["average"]
+        average_counts[average] += 1
+        best_average = average if best_average is None else max(best_average, average)
+        if len(bottom_average_heap) < DEFAULT_BOTTOM_LIMIT:
+            heappush(bottom_average_heap, -average)
+        elif average < -bottom_average_heap[0]:
+            heapreplace(bottom_average_heap, -average)
         # Earlier discovery wins an otherwise exact tie.  The heap root is the
         # weakest retained board, so each solution costs only O(log top_limit).
         top_entry = (*rank, -count, board)
@@ -983,6 +1088,12 @@ def enumerate_solutions(
         best_solution = top_solutions[0]
         best_discovery_index = -ranked_entries[0][2]
     top_count = len(top_solutions)
+    average_benchmarks = _average_benchmarks(
+        average_counts,
+        bottom_average_heap,
+        best_average,
+        count,
+    )
 
     if completed and count == 0:
         return {
@@ -993,6 +1104,7 @@ def enumerate_solutions(
             "stored_count": 0,
             "top_count": 0,
             "top_solutions": [],
+            "average_benchmarks": None,
             "stats": stats,
         }
     if completed:
@@ -1007,6 +1119,7 @@ def enumerate_solutions(
             "stored_count": stored_count,
             "top_count": top_count,
             "top_solutions": top_solutions,
+            "average_benchmarks": average_benchmarks,
             "best_solution": best_solution,
             "best_discovery_index": best_discovery_index,
             "stats": stats,
@@ -1030,6 +1143,7 @@ def enumerate_solutions(
         "stored_count": stored_count,
         "top_count": top_count,
         "top_solutions": top_solutions,
+        "average_benchmarks": average_benchmarks,
         "best_solution": best_solution,
         "best_discovery_index": best_discovery_index,
         "stop_reason": stop_reason,
@@ -1041,6 +1155,12 @@ def solve_json(raw_words: str, time_limit_seconds: float = DEFAULT_TIME_LIMIT_SE
     """Stable string boundary used by the JavaScript worker."""
 
     return json.dumps(solve(raw_words, time_limit_seconds), ensure_ascii=False)
+
+
+def evaluate_json(raw_board: str, raw_words: str) -> str:
+    """JSON boundary for scoring a manually entered board in the Worker."""
+
+    return json.dumps(evaluate_board(raw_board, raw_words), ensure_ascii=False)
 
 
 def enumerate_json(
