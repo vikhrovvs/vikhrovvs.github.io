@@ -3,6 +3,8 @@ const wordsInput = document.querySelector('#words-input');
 const wordCount = document.querySelector('#word-count');
 const solveButton = document.querySelector('#solve-button');
 const stopButton = document.querySelector('#stop-button');
+const timeLimit = document.querySelector('#time-limit');
+const runtimeNote = document.querySelector('#runtime-note');
 const statusBadge = document.querySelector('#status-badge');
 const resultMessage = document.querySelector('#result-message');
 const resultStats = document.querySelector('#result-stats');
@@ -36,7 +38,8 @@ const medianAverage = document.querySelector('#median-average');
 const bottomAverage = document.querySelector('#bottom-average');
 const comparisonNote = document.querySelector('#comparison-note');
 
-const TIME_LIMIT_SECONDS = 20;
+const DEFAULT_TIME_LIMIT_SECONDS = 20;
+const MAX_TIME_LIMIT_SECONDS = 600;
 const DISPLAY_LIMIT = 200;
 const TOP_LIMIT = 100;
 const MAX_SOLUTIONS = 100000;
@@ -69,6 +72,21 @@ function normalisedWordsKey(value) {
   return [...new Set(
     parseVisibleWords(value).map((word) => word.toLocaleLowerCase('ru-RU').normalize('NFC')),
   )].join('\n');
+}
+
+function selectedTimeLimit() {
+  const seconds = Number(timeLimit.value);
+  return Number.isFinite(seconds)
+    ? Math.max(1, Math.min(seconds, MAX_TIME_LIMIT_SECONDS))
+    : DEFAULT_TIME_LIMIT_SECONDS;
+}
+
+function updateRuntimeNote() {
+  const seconds = selectedTimeLimit();
+  const duration = seconds < 60
+    ? `${seconds} ${pluralForm(seconds, ['секунда', 'секунды', 'секунд'])}`
+    : `${seconds / 60} ${pluralForm(seconds / 60, ['минута', 'минуты', 'минут'])}`;
+  runtimeNote.textContent = `Первое решение появится сразу; полный подсчёт продолжится до ${duration}.`;
 }
 
 function pluralForm(count, forms) {
@@ -105,6 +123,7 @@ function setStatus(state, label, message) {
 function setBusy(isBusy) {
   wordsInput.disabled = isBusy;
   solveButton.disabled = isBusy;
+  timeLimit.disabled = isBusy;
   configurationInput.disabled = isBusy;
   evaluateButton.disabled = isBusy;
   evaluateConfigurationButton.disabled = isBusy;
@@ -114,6 +133,7 @@ function setBusy(isBusy) {
 function setEvaluationBusy(isBusy) {
   wordsInput.disabled = isBusy;
   solveButton.disabled = isBusy;
+  timeLimit.disabled = isBusy;
   configurationInput.disabled = isBusy;
   evaluateButton.disabled = isBusy;
   firstSolutionButton.disabled = isBusy;
@@ -230,7 +250,7 @@ function handleWorkerFailure(message, failedWorker) {
 
 function ensureWorker() {
   if (worker) return worker;
-  const nextWorker = new Worker('./worker.js?v=5', { type: 'module' });
+  const nextWorker = new Worker('./worker.js?v=6', { type: 'module' });
   worker = nextWorker;
   nextWorker.addEventListener('message', handleWorkerMessage);
   nextWorker.addEventListener('error', () => {
@@ -264,6 +284,7 @@ function renderStats(stats) {
   if (Number.isFinite(stats.essential_words)) {
     details.push(`${stats.essential_words} ${pluralForm(stats.essential_words, ['существенное ограничение', 'существенных ограничения', 'существенных ограничений'])}`);
   }
+  if (stats.search_plans > 1) details.push(`${stats.search_plans} сценариев для 16-й клетки`);
   if (stats.removed_words > 0) details.push(`${stats.removed_words} вложенных отброшено`);
   resultStats.textContent = details.join(' · ');
 }
@@ -543,7 +564,7 @@ form.addEventListener('submit', (event) => {
     type: 'solve',
     requestId,
     words: wordsInput.value,
-    timeLimitSeconds: TIME_LIMIT_SECONDS,
+    timeLimitSeconds: selectedTimeLimit(),
     displayLimit: DISPLAY_LIMIT,
     topLimit: TOP_LIMIT,
     maxSolutions: MAX_SOLUTIONS,
@@ -605,5 +626,7 @@ wordsInput.addEventListener('input', () => {
     configurationMessage.textContent = 'Список слов изменился — оцените конфигурацию заново.';
   }
 });
+timeLimit.addEventListener('change', updateRuntimeNote);
 updateWordCount();
+updateRuntimeNote();
 updateHighlights();

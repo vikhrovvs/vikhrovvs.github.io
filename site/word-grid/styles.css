@@ -19,7 +19,7 @@
 [hidden] { display: none !important; }
 html { min-width: 320px; min-height: 100%; background: var(--ink); }
 body { min-height: 100%; margin: 0; background: var(--ink); color: var(--paper); font-family: var(--font); }
-button, input, textarea { font: inherit; }
+button, input, select, textarea { font: inherit; }
 button, a { -webkit-tap-highlight-color: transparent; }
 button { color: inherit; }
 .app-shell { width: min(100%, 1580px); min-height: 100svh; margin: auto; padding: 0 clamp(.85rem, 2.2vw, 2.25rem); }
@@ -37,7 +37,7 @@ button { color: inherit; }
 .topbar nav { display: flex; gap: 1.4rem; }
 .topbar nav a { color: var(--muted); font-size: .78rem; font-weight: 600; text-decoration: none; transition: color 160ms ease; }
 .topbar nav a:hover { color: var(--paper); }
-.topbar a:focus-visible, button:focus-visible, summary:focus-visible, textarea:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+.topbar a:focus-visible, button:focus-visible, select:focus-visible, summary:focus-visible, textarea:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
 
 main { padding: clamp(2.8rem, 6vw, 5.6rem) 0 4rem; }
 .intro { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(17rem, .7fr); align-items: end; gap: 2rem; margin-bottom: clamp(2rem, 4vw, 3.6rem); }
@@ -66,6 +66,11 @@ main { padding: clamp(2.8rem, 6vw, 5.6rem) 0 4rem; }
 .uniqueness-details p, .complexity-details p { margin: .2rem 0 .65rem; }
 .uniqueness-details ul, .complexity-details ul { margin: 0; padding-left: 1.1rem; }
 .uniqueness-details li + li, .complexity-details li + li { margin-top: .4rem; }
+.search-settings { display: flex; align-items: end; justify-content: space-between; gap: 1rem; margin-top: 1rem; }
+.search-settings label { display: grid; gap: .45rem; color: #aab1a4; font-size: .72rem; font-weight: 700; }
+.search-settings select { min-width: 9rem; min-height: 40px; border: 1px solid #3c4337; border-radius: 9px; background: #12150f; color: var(--paper); padding: .55rem 2rem .55rem .7rem; font-size: .76rem; cursor: pointer; }
+.search-settings select:disabled { cursor: wait; opacity: .55; }
+.search-settings > span { padding-bottom: .62rem; color: #747c70; font-size: .66rem; line-height: 1.4; text-align: right; }
 .form-actions { display: flex; gap: .65rem; margin-top: 1.4rem; }
 .primary-button, .secondary-button { min-height: 48px; border-radius: 10px; padding: .85rem 1rem; font-size: .79rem; font-weight: 700; cursor: pointer; }
 .primary-button { display: flex; flex: 1; align-items: center; justify-content: space-between; border: 1px solid var(--accent); background: var(--accent); color: #11130f; }
@@ -180,6 +185,8 @@ footer { display: flex; justify-content: space-between; margin-top: 5rem; paddin
   .topbar nav a { font-size: .72rem; }
   .input-panel, .result-panel { padding: 1.15rem; }
   .panel-heading { align-items: center; }
+  .search-settings { align-items: stretch; flex-direction: column; gap: .6rem; }
+  .search-settings > span { padding: 0; text-align: left; }
   .form-actions { flex-direction: column; }
   .configuration-actions { align-items: flex-start; flex-direction: column; }
   .board-grid { border-radius: 14px; }

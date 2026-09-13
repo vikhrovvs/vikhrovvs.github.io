@@ -150,6 +150,23 @@ def main() -> None:
         all(json.loads(update)["solution"]["board"])
         for update in full_board_updates
     )
+
+    # Real 12-word inputs that previously found nothing within 20 seconds.
+    regression_cases = [
+        (
+            "барий\nбор\nборий\nбром\nйод\nрадий\nрадон\nродий\nуран\nхлор\nцезий\nцерий",
+            8,
+        ),
+        (
+            "алжир\nанкара\nберлин\nкаир\nлима\nманила\nпариж\nпекин\nрабат\nрига\nрим\nтирана",
+            2,
+        ),
+    ]
+    for words, expected_count in regression_cases:
+        result = solver.enumerate_solutions(words, 2, 100, 1, top_limit=10)
+        assert result["status"] == "complete", result
+        assert result["count"] == expected_count
+        assert result["stats"]["search_plans"] > 1
     print("OK: word-grid solver cases passed")
 
 

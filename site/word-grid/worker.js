@@ -8,7 +8,7 @@ async function getSolver() {
       self.postMessage({ type: 'progress', stage: 'loading' });
       const [pyodide, response] = await Promise.all([
         loadPyodide(),
-        fetch('./solver.py?v=5'),
+        fetch('./solver.py?v=6'),
       ]);
       if (!response.ok) throw new Error('Не удалось загрузить Python-алгоритм.');
       const source = await response.text();

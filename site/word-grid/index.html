@@ -14,7 +14,7 @@
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2311130f'/%3E%3Cpath d='M7 7h8v8H7zm10 0h8v8h-8zM7 17h8v8H7zm10 0h8v8h-8z' fill='%23d8ff43'/%3E%3C/svg%3E"
     />
     <title>Словесный квадрат</title>
-    <link rel="stylesheet" href="./styles.css?v=5" />
+    <link rel="stylesheet" href="./styles.css?v=6" />
   </head>
   <body>
     <div class="app-shell">
@@ -72,7 +72,7 @@
                   <li>Разные маршруты слов по одному полю не создают новых решений.</li>
                   <li>Повороты и зеркальные отражения считаются одним решением.</li>
                   <li>Если букв меньше 16, неиспользованные клетки остаются пустыми и не создают вариантов.</li>
-                  <li>В галерее хранятся первые 200 полей и листаемый топ-100 по убыванию запутанности; счёт продолжается до 20 секунд или 100&nbsp;000 решений.</li>
+                  <li>В галерее хранятся первые 200 полей и листаемый топ-100 по убыванию запутанности; счёт продолжается до выбранного лимита времени или 100&nbsp;000 решений.</li>
                   <li>Точное число и глобальный топ гарантируются только после полного обхода; иначе это нижняя граница и топ среди найденных.</li>
                 </ul>
               </div>
@@ -94,13 +94,26 @@
               </div>
             </details>
 
+            <div class="search-settings">
+              <label for="time-limit">
+                Лимит поиска
+                <select id="time-limit" name="time-limit">
+                  <option value="20" selected>20 секунд</option>
+                  <option value="60">1 минута</option>
+                  <option value="180">3 минуты</option>
+                  <option value="600">10 минут</option>
+                </select>
+              </label>
+              <span>Поиск можно остановить раньше</span>
+            </div>
+
             <div class="form-actions">
               <button class="primary-button" id="solve-button" type="submit">
                 <span>Найти решения</span><span class="button-arrow" aria-hidden="true">→</span>
               </button>
               <button class="secondary-button" id="stop-button" type="button" hidden>Остановить</button>
             </div>
-            <p class="runtime-note">Первое решение появится сразу; полный подсчёт продолжится до 20 секунд.</p>
+            <p class="runtime-note" id="runtime-note">Первое решение появится сразу; полный подсчёт продолжится до 20 секунд.</p>
           </form>
 
           <section class="result-panel" aria-labelledby="result-title">
@@ -212,6 +225,6 @@
         <span>Python · WebAssembly</span>
       </footer>
     </div>
-    <script type="module" src="./app.js?v=5"></script>
+    <script type="module" src="./app.js?v=6"></script>
   </body>
 </html>

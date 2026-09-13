@@ -34,6 +34,7 @@ ROOT_CELL_ORBITS = (0, 1, 5)  # corner, non-corner edge, inner cell
 MAX_WORDS = 80
 MAX_ESSENTIAL_POSITIONS = 320
 DEFAULT_TIME_LIMIT_SECONDS = 20.0
+MAX_TIME_LIMIT_SECONDS = 600.0
 DEFAULT_DISPLAY_LIMIT = 200
 DEFAULT_TOP_LIMIT = 100
 DEFAULT_BOTTOM_LIMIT = 100
@@ -401,13 +402,28 @@ def _solution_payload(
 class WordGridCsp:
     """Specialised CSP with 16-bit domains and exact backtracking."""
 
-    def __init__(self, words: list[str], minimum_letter_cells: dict[str, int], deadline: float):
+    def __init__(
+        self,
+        words: list[str],
+        minimum_letter_cells: dict[str, int],
+        deadline: float,
+        maximum_letter_cells: dict[str, int] | None = None,
+    ):
         self.words = words
         self.minimum_letter_cells = minimum_letter_cells
         minimum_total = sum(minimum_letter_cells.values())
-        self.maximum_letter_cells = {
-            letter: CELL_COUNT - (minimum_total - minimum)
-            for letter, minimum in minimum_letter_cells.items()
+        self.maximum_letter_cells = (
+            maximum_letter_cells
+            if maximum_letter_cells is not None
+            else {
+                letter: CELL_COUNT - (minimum_total - minimum)
+                for letter, minimum in minimum_letter_cells.items()
+            }
+        )
+        self.single_cell_letters = {
+            letter
+            for letter, maximum in self.maximum_letter_cells.items()
+            if maximum == 1
         }
         self.deadline = deadline
 
@@ -540,11 +556,13 @@ class WordGridCsp:
         queue = deque(changed_variables)
         queued = set(changed_variables)
         propagated_singletons: set[int] = set()
+        affected_words = {self.variable_word[variable] for variable in changed_variables}
 
         def narrow(variable: int, new_domain: int) -> bool:
             if new_domain == domains[variable]:
                 return True
             domains[variable] = new_domain
+            affected_words.add(self.variable_word[variable])
             if not new_domain:
                 return False
             if variable not in queued:
@@ -559,6 +577,22 @@ class WordGridCsp:
             if not domain:
                 return False
 
+            # If the cell budget permits only one cell for this letter, all
+            # of its occurrences are the same CSP variable in disguise.
+            # Synchronising their domains turns the common 16-letter case
+            # from dozens of position variables into 16 effective choices.
+            letter = self.letters[variable]
+            if letter in self.single_cell_letters:
+                shared_domain = ALL_CELLS
+                for same_letter_variable in self.letter_variables[letter]:
+                    shared_domain &= domains[same_letter_variable]
+                if not shared_domain:
+                    return False
+                for same_letter_variable in self.letter_variables[letter]:
+                    if not narrow(same_letter_variable, shared_domain):
+                        return False
+                domain = shared_domain
+
             # Arc consistency for the two path neighbours of this position.
             supported_cells = self._neighbour_union(domain)
             for neighbour in self.adjacent_variables[variable]:
@@ -569,8 +603,6 @@ class WordGridCsp:
                 continue
             propagated_singletons.add(variable)
             cell = domain.bit_length() - 1
-            letter = self.letters[variable]
-
             existing_owner = owners[cell]
             if existing_owner is not None and existing_owner != letter:
                 return False
@@ -612,24 +644,48 @@ class WordGridCsp:
         # Arc consistency works on pairs and can miss a conflict that is only
         # visible across the whole word.  Check that each word still has at
         # least one complete simple path through its current domains.
-        for variables in self.word_variables:
-            if not self._word_path_possible(variables, domains):
+        for word_index in affected_words:
+            if not self._word_path_possible(self.word_variables[word_index], domains):
                 return False
         return self._capacity_possible(domains, owners)
 
     def _choose_variable(self, domains: list[int]) -> int | None:
-        candidates = [variable for variable, domain in enumerate(domains) if domain & (domain - 1)]
+        candidates = []
+        represented_letters: set[str] = set()
+        for variable, domain in enumerate(domains):
+            if not domain & (domain - 1):
+                continue
+            letter = self.letters[variable]
+            if letter in self.single_cell_letters:
+                if letter in represented_letters:
+                    continue
+                represented_letters.add(letter)
+            candidates.append(variable)
         if not candidates:
             return None
 
-        def priority(variable: int) -> tuple[int, int, int]:
+        def priority(variable: int) -> tuple[int, int, int, int]:
+            letter = self.letters[variable]
+            group = (
+                self.letter_variables[letter]
+                if letter in self.single_cell_letters
+                else [variable]
+            )
             domain_size = domains[variable].bit_count()
+            constrained_neighbours = {
+                neighbour
+                for member in group
+                for neighbour in self.adjacent_variables[member]
+            }
             adjacency_pressure = sum(
                 CELL_COUNT + 1 - domains[neighbour].bit_count()
-                for neighbour in self.adjacent_variables[variable]
+                for neighbour in constrained_neighbours
             )
-            word_length = len(self.word_variables[self.variable_word[variable]])
-            return domain_size, -adjacency_pressure, -word_length
+            word_length = max(
+                len(self.word_variables[self.variable_word[member]])
+                for member in group
+            )
+            return domain_size, -adjacency_pressure, -len(group), -word_length
 
         return min(candidates, key=priority)
 
@@ -640,14 +696,28 @@ class WordGridCsp:
             # can move this first occurrence to one of these three cell orbits.
             cells = [cell for cell in ROOT_CELL_ORBITS if domains[variable] & (1 << cell)]
 
-        word_variables = self.word_variables[self.variable_word[variable]]
         letter = self.letters[variable]
+        choice_variables = (
+            self.letter_variables[letter]
+            if letter in self.single_cell_letters
+            else [variable]
+        )
+        word_variables = {
+            other
+            for member in choice_variables
+            for other in self.word_variables[self.variable_word[member]]
+        }
+        constrained_neighbours = {
+            neighbour
+            for member in choice_variables
+            for neighbour in self.adjacent_variables[member]
+        }
 
         def score(cell: int) -> int:
             bit = 1 << cell
             adjacency_options = sum(
                 (NEIGHBOUR_MASKS[cell] & domains[neighbour]).bit_count()
-                for neighbour in self.adjacent_variables[variable]
+                for neighbour in constrained_neighbours
             )
             same_letter_sharing = sum(
                 1 for other in self.letter_variables[letter]
@@ -823,10 +893,49 @@ def _prepare_problem(raw_words: str) -> tuple[dict | None, dict | None]:
     }, None
 
 
-def _base_stats(problem: dict, solver: WordGridCsp, started: float) -> dict:
+def _cell_count_plans(problem: dict) -> list[tuple[dict[str, int], dict[str, int] | None]]:
+    """Split a one-spare-cell search into disjoint, tighter subproblems.
+
+    With 15 mandatory cells, every visible board either leaves one cell empty
+    or gives exactly one letter one extra cell.  Selecting that case up front
+    exposes far more equality constraints without losing completeness.
+    """
+
+    minimum = problem["minimum_letter_cells"]
+    spare_cells = CELL_COUNT - problem["minimum_cells"]
+    if spare_cells != 1:
+        return [(minimum, None)]
+
+    plans: list[tuple[dict[str, int], dict[str, int] | None]] = [
+        (minimum, minimum),  # one genuinely unused cell
+    ]
+    occurrences = Counter("".join(problem["essential"]))
+    extra_letters = sorted(
+        (
+            letter
+            for letter, count in occurrences.items()
+            if count > minimum[letter]
+        ),
+        key=lambda letter: (-occurrences[letter], letter),
+    )
+    for letter in extra_letters:
+        exact_counts = dict(minimum)
+        exact_counts[letter] += 1
+        plans.append((exact_counts, exact_counts))
+    return plans
+
+
+def _base_stats(
+    problem: dict,
+    solver: WordGridCsp,
+    started: float,
+    nodes_visited: int | None = None,
+    search_plans: int = 1,
+) -> dict:
     return {
         "elapsed_ms": round((time.perf_counter() - started) * 1000),
-        "nodes": solver.nodes_visited,
+        "nodes": solver.nodes_visited if nodes_visited is None else nodes_visited,
+        "search_plans": search_plans,
         "variables": problem["variable_count"],
         "essential_words": len(problem["essential"]),
         "removed_words": len(problem["words"]) - len(problem["essential"]),
@@ -924,26 +1033,51 @@ def solve(raw_words: str, time_limit_seconds: float = DEFAULT_TIME_LIMIT_SECONDS
         return error
     assert problem is not None
 
-    time_limit_seconds = max(0.1, float(time_limit_seconds))
-    solver = WordGridCsp(
-        problem["essential"],
-        problem["minimum_letter_cells"],
-        deadline=started + time_limit_seconds,
+    time_limit_seconds = max(0.1, min(float(time_limit_seconds), MAX_TIME_LIMIT_SECONDS))
+    deadline = started + time_limit_seconds
+    plans = _cell_count_plans(problem)
+    total_nodes = 0
+    plans_started = 0
+    solution = None
+    solver: WordGridCsp | None = None
+    for minimum_counts, maximum_counts in plans:
+        plans_started += 1
+        solver = WordGridCsp(
+            problem["essential"],
+            minimum_counts,
+            deadline=deadline,
+            maximum_letter_cells=maximum_counts,
+        )
+        try:
+            solution = solver.solve()
+        except SearchTimedOut:
+            total_nodes += solver.nodes_visited
+            return {
+                "status": "timeout",
+                "message": (
+                    f"За {time_limit_seconds:g} с не удалось ни найти квадрат, ни доказать, что его нет. "
+                    "Можно увеличить лимит времени или запустить поиск для меньшего набора."
+                ),
+                "stats": _base_stats(
+                    problem,
+                    solver,
+                    started,
+                    nodes_visited=total_nodes,
+                    search_plans=plans_started,
+                ),
+            }
+        total_nodes += solver.nodes_visited
+        if solution is not None:
+            break
+
+    assert solver is not None
+    base_stats = _base_stats(
+        problem,
+        solver,
+        started,
+        nodes_visited=total_nodes,
+        search_plans=plans_started,
     )
-
-    try:
-        solution = solver.solve()
-    except SearchTimedOut:
-        return {
-            "status": "timeout",
-            "message": (
-                f"За {time_limit_seconds:g} с не удалось ни найти квадрат, ни доказать, что его нет. "
-                "Поиск можно остановить без зависания страницы и запустить для меньшего набора."
-            ),
-            "stats": _base_stats(problem, solver, started),
-        }
-
-    base_stats = _base_stats(problem, solver, started)
 
     if solution is None:
         return {
@@ -989,15 +1123,12 @@ def enumerate_solutions(
         return error
     assert problem is not None
 
-    time_limit_seconds = max(0.1, float(time_limit_seconds))
+    time_limit_seconds = max(0.1, min(float(time_limit_seconds), MAX_TIME_LIMIT_SECONDS))
     max_solutions = max(1, min(int(max_solutions), DEFAULT_MAX_UNIQUE_SOLUTIONS))
     display_limit = max(1, min(int(display_limit), DEFAULT_DISPLAY_LIMIT))
     top_limit = max(1, min(int(top_limit), DEFAULT_TOP_LIMIT))
-    solver = WordGridCsp(
-        problem["essential"],
-        problem["minimum_letter_cells"],
-        deadline=started + time_limit_seconds,
-    )
+    deadline = started + time_limit_seconds
+    plans = _cell_count_plans(problem)
     last_count_update = started
     best_rank: tuple[float, float] | None = None
     best_solution: dict | None = None
@@ -1065,15 +1196,51 @@ def enumerate_solutions(
             emit({"event": "count", "count": count})
             last_count_update = now
 
-    completed = False
+    completed = True
     stop_reason: str | None = None
-    try:
-        completed, stop_reason = solver.enumerate_solutions(on_unique_board, max_solutions)
-    except SearchTimedOut:
-        stop_reason = "timeout"
+    count = 0
+    total_nodes = 0
+    plans_started = 0
+    solver: WordGridCsp | None = None
+    for minimum_counts, maximum_counts in plans:
+        plans_started += 1
+        solver = WordGridCsp(
+            problem["essential"],
+            minimum_counts,
+            deadline=deadline,
+            maximum_letter_cells=maximum_counts,
+        )
+        count_offset = count
 
-    count = len(solver.seen_boards)
-    stats = _base_stats(problem, solver, started)
+        def on_plan_board(board: tuple[str, ...], local_count: int) -> None:
+            on_unique_board(board, count_offset + local_count)
+
+        try:
+            branch_completed, branch_stop_reason = solver.enumerate_solutions(
+                on_plan_board,
+                max_solutions - count,
+            )
+        except SearchTimedOut:
+            total_nodes += solver.nodes_visited
+            count += len(solver.seen_boards)
+            completed = False
+            stop_reason = "timeout"
+            break
+        total_nodes += solver.nodes_visited
+        count += len(solver.seen_boards)
+        if not branch_completed:
+            completed = False
+            stop_reason = branch_stop_reason
+            break
+
+    assert solver is not None
+    stats = _base_stats(
+        problem,
+        solver,
+        started,
+        nodes_visited=total_nodes,
+        search_plans=plans_started,
+    )
     stored_count = min(count, display_limit)
     ranked_entries = sorted(top_heap, key=lambda entry: entry[:3], reverse=True)
     top_solutions = [
