@@ -14,7 +14,7 @@
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2311130f'/%3E%3Cpath d='M7 7h8v8H7zm10 0h8v8h-8zM7 17h8v8H7zm10 0h8v8h-8z' fill='%23d8ff43'/%3E%3C/svg%3E"
     />
     <title>Словесный квадрат</title>
-    <link rel="stylesheet" href="./styles.css?v=3" />
+    <link rel="stylesheet" href="./styles.css?v=4" />
   </head>
   <body>
     <div class="app-shell">
@@ -72,8 +72,8 @@
                   <li>Разные маршруты слов по одному полю не создают новых решений.</li>
                   <li>Повороты и зеркальные отражения считаются одним решением.</li>
                   <li>Если букв меньше 16, неиспользованные клетки остаются пустыми и не создают вариантов.</li>
-                  <li>В галерее хранятся первые 200 полей и самое запутанное из найденных; счёт продолжается до 20 секунд или 100&nbsp;000 решений.</li>
-                  <li>Точное число показывается только после полного обхода, иначе это нижняя граница.</li>
+                  <li>В галерее хранятся первые 200 полей и листаемый топ-100 по убыванию запутанности; счёт продолжается до 20 секунд или 100&nbsp;000 решений.</li>
+                  <li>Точное число и глобальный топ гарантируются только после полного обхода; иначе это нижняя граница и топ среди найденных.</li>
                 </ul>
               </div>
             </details>
@@ -135,11 +135,11 @@
                 </p>
                 <div class="solution-highlights" id="solution-highlights" aria-label="Особые решения" hidden>
                   <button id="first-solution" type="button" aria-pressed="true">Первое найденное</button>
-                  <button id="best-solution" type="button" aria-pressed="false">Самое запутанное</button>
+                  <button id="best-solution" type="button" aria-pressed="false">Топ запутанных</button>
                 </div>
                 <div class="solution-navigation" id="solution-navigation" hidden>
                   <button id="previous-solution" type="button" aria-label="Предыдущее решение">←</button>
-                  <span><strong id="solution-position">1</strong> из <span id="stored-solutions">1</span> показанных</span>
+                  <span><strong id="solution-position">1</strong> из <span id="stored-solutions">1</span> <span id="navigation-kind">показанных</span></span>
                   <button id="next-solution" type="button" aria-label="Следующее решение">→</button>
                 </div>
                 <div class="word-paths" id="word-paths" aria-label="Маршруты слов"></div>
@@ -175,6 +175,6 @@
         <span>Python · WebAssembly</span>
       </footer>
     </div>
-    <script type="module" src="./app.js?v=3"></script>
+    <script type="module" src="./app.js?v=4"></script>
   </body>
 </html>

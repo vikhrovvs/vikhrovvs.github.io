@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from collections import Counter, defaultdict, deque
-from heapq import heappop, heappush
+from heapq import heappop, heappush, heapreplace
 import json
 import re
 import time
@@ -35,6 +35,7 @@ MAX_WORDS = 80
 MAX_ESSENTIAL_POSITIONS = 320
 DEFAULT_TIME_LIMIT_SECONDS = 20.0
 DEFAULT_DISPLAY_LIMIT = 200
+DEFAULT_TOP_LIMIT = 100
 DEFAULT_MAX_UNIQUE_SOLUTIONS = 100_000
 
 
@@ -874,20 +875,29 @@ def enumerate_solutions(
     max_solutions: int = DEFAULT_MAX_UNIQUE_SOLUTIONS,
     display_limit: int = DEFAULT_DISPLAY_LIMIT,
     on_update: Callable[[str], object] | None = None,
+    top_limit: int = DEFAULT_TOP_LIMIT,
 ) -> dict:
-    """Count unique boards and stream the first displayable solutions as JSON."""
+    """Count boards, stream the first ones, and retain a bounded ranked top."""
 
     started = time.perf_counter()
     problem, error = _prepare_problem(raw_words)
     if error is not None:
         if error["status"] == "unsatisfiable":
-            return {**error, "count": 0, "exact": True, "stored_count": 0}
+            return {
+                **error,
+                "count": 0,
+                "exact": True,
+                "stored_count": 0,
+                "top_count": 0,
+                "top_solutions": [],
+            }
         return error
     assert problem is not None
 
     time_limit_seconds = max(0.1, float(time_limit_seconds))
     max_solutions = max(1, min(int(max_solutions), DEFAULT_MAX_UNIQUE_SOLUTIONS))
     display_limit = max(1, min(int(display_limit), DEFAULT_DISPLAY_LIMIT))
+    top_limit = max(1, min(int(top_limit), DEFAULT_TOP_LIMIT))
     solver = WordGridCsp(
         problem["essential"],
         problem["minimum_letter_cells"],
@@ -897,6 +907,7 @@ def enumerate_solutions(
     best_rank: tuple[float, float] | None = None
     best_solution: dict | None = None
     best_discovery_index = 0
+    top_heap: list[tuple[float, float, int, tuple[str, ...]]] = []
 
     def emit(payload: dict) -> None:
         if on_update is not None:
@@ -914,6 +925,13 @@ def enumerate_solutions(
             complexity["minimum"],
             complexity["average"],
         )
+        # Earlier discovery wins an otherwise exact tie.  The heap root is the
+        # weakest retained board, so each solution costs only O(log top_limit).
+        top_entry = (*rank, -count, board)
+        if len(top_heap) < top_limit:
+            heappush(top_heap, top_entry)
+        elif top_entry[:3] > top_heap[0][:3]:
+            heapreplace(top_heap, top_entry)
         is_best = best_rank is None or rank > best_rank
         solution = (
             _solution_payload(board, problem["words"], complexity)
@@ -952,6 +970,19 @@ def enumerate_solutions(
     count = len(solver.seen_boards)
     stats = _base_stats(problem, solver, started)
     stored_count = min(count, display_limit)
+    ranked_entries = sorted(top_heap, key=lambda entry: entry[:3], reverse=True)
+    top_solutions = [
+        _solution_payload(
+            entry[3],
+            problem["words"],
+            {"minimum": entry[0], "average": entry[1]},
+        )
+        for entry in ranked_entries
+    ]
+    if top_solutions:
+        best_solution = top_solutions[0]
+        best_discovery_index = -ranked_entries[0][2]
+    top_count = len(top_solutions)
 
     if completed and count == 0:
         return {
@@ -960,15 +991,22 @@ def enumerate_solutions(
             "count": 0,
             "exact": True,
             "stored_count": 0,
+            "top_count": 0,
+            "top_solutions": [],
             "stats": stats,
         }
     if completed:
         return {
             "status": "complete",
-            "message": f"Поиск завершён: найдено {_unique_solution_phrase(count)}.",
+            "message": (
+                f"Поиск завершён: найдено {_unique_solution_phrase(count)}. "
+                f"Топ-{top_count} отсортирован по убыванию запутанности."
+            ),
             "count": count,
             "exact": True,
             "stored_count": stored_count,
+            "top_count": top_count,
+            "top_solutions": top_solutions,
             "best_solution": best_solution,
             "best_discovery_index": best_discovery_index,
             "stats": stats,
@@ -977,12 +1015,12 @@ def enumerate_solutions(
     if stop_reason == "limit":
         message = (
             f"Найдено решений: не менее {count} — достигнут защитный предел. "
-            f"Для просмотра сохранены первые {stored_count}; лучший кандидат доступен отдельно."
+            f"Для просмотра сохранены первые {stored_count} и топ-{top_count} среди найденных."
         )
     else:
         message = (
             f"За {time_limit_seconds:g} с найдено решений: не менее {count}; полный обход не завершён. "
-            f"Для просмотра сохранены первые {stored_count}; лучший кандидат доступен отдельно."
+            f"Для просмотра сохранены первые {stored_count} и топ-{top_count} среди найденных."
         )
     return {
         "status": "partial" if count else "timeout",
@@ -990,6 +1028,8 @@ def enumerate_solutions(
         "count": count,
         "exact": False,
         "stored_count": stored_count,
+        "top_count": top_count,
+        "top_solutions": top_solutions,
         "best_solution": best_solution,
         "best_discovery_index": best_discovery_index,
         "stop_reason": stop_reason,
@@ -1009,6 +1049,7 @@ def enumerate_json(
     max_solutions: int = DEFAULT_MAX_UNIQUE_SOLUTIONS,
     display_limit: int = DEFAULT_DISPLAY_LIMIT,
     on_update: Callable[[str], object] | None = None,
+    top_limit: int = DEFAULT_TOP_LIMIT,
 ) -> str:
     """Streaming JSON boundary used by the JavaScript worker."""
 
@@ -1018,5 +1059,6 @@ def enumerate_json(
         max_solutions,
         display_limit,
         on_update,
+        top_limit,
     )
     return json.dumps(result, ensure_ascii=False)

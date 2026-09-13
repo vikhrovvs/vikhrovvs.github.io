@@ -15,6 +15,7 @@ const solutionCountLabel = document.querySelector('#solution-count-label');
 const solutionNavigation = document.querySelector('#solution-navigation');
 const solutionPosition = document.querySelector('#solution-position');
 const storedSolutions = document.querySelector('#stored-solutions');
+const navigationKind = document.querySelector('#navigation-kind');
 const previousSolution = document.querySelector('#previous-solution');
 const nextSolution = document.querySelector('#next-solution');
 const solutionComplexity = document.querySelector('#solution-complexity');
@@ -26,16 +27,19 @@ const bestSolutionButton = document.querySelector('#best-solution');
 
 const TIME_LIMIT_SECONDS = 20;
 const DISPLAY_LIMIT = 200;
+const TOP_LIMIT = 100;
 const MAX_SOLUTIONS = 100000;
 
 let worker;
 let requestId = 0;
 let latestResult = null;
 let selectedWordIndex = -1;
-let solutions = [];
+let gallerySolutions = [];
+let rankedSolutions = [];
+let liveBestSolution = null;
+let currentCollection = 'gallery';
 let currentSolutionIndex = -1;
 let reportedCount = 0;
-let bestSolutionIndex = -1;
 let enumerationExact = false;
 
 function parseVisibleWords(value) {
@@ -92,28 +96,45 @@ function updateSolutionCount({ exact = false, running = false } = {}) {
 }
 
 function updateNavigation() {
-  const shouldShow = solutions.length > 0;
+  const collection = currentSolutions();
+  const shouldShow = collection.length > 0 && currentCollection !== 'best';
   solutionNavigation.hidden = !shouldShow;
   if (!shouldShow) return;
   solutionPosition.textContent = String(currentSolutionIndex + 1);
-  storedSolutions.textContent = solutions.length.toLocaleString('ru-RU');
+  storedSolutions.textContent = collection.length.toLocaleString('ru-RU');
+  navigationKind.textContent = currentCollection === 'ranked' ? 'в топе' : 'показанных';
   previousSolution.disabled = currentSolutionIndex <= 0;
-  nextSolution.disabled = currentSolutionIndex >= solutions.length - 1;
+  nextSolution.disabled = currentSolutionIndex >= collection.length - 1;
 }
 
 function updateHighlights() {
-  const hasBest = bestSolutionIndex >= 0 && solutions.length > 0;
-  solutionHighlights.hidden = !hasBest;
-  if (!hasBest) return;
+  const first = gallerySolutions[0];
+  const rankedBest = rankedSolutions[0];
+  const best = rankedBest ?? liveBestSolution;
+  const hasFirst = Boolean(first);
+  const hasBest = Boolean(best);
+  solutionHighlights.hidden = !hasFirst || !hasBest;
+  if (!hasFirst || !hasBest) return;
 
-  const bestIsFirst = bestSolutionIndex === 0;
-  firstSolutionButton.textContent = bestIsFirst
-    ? `Первое · ${enumerationExact ? 'самое запутанное' : 'лучшее пока'}`
-    : 'Первое найденное';
-  firstSolutionButton.setAttribute('aria-pressed', String(currentSolutionIndex === 0));
-  bestSolutionButton.hidden = bestIsFirst;
-  bestSolutionButton.textContent = enumerationExact ? 'Самое запутанное' : 'Лучшее из найденных';
-  bestSolutionButton.setAttribute('aria-pressed', String(currentSolutionIndex === bestSolutionIndex));
+  const bestIsFirst = boardKey(first) === boardKey(best);
+  const onlyRankedSolutionIsFirst = rankedSolutions.length === 1 && bestIsFirst;
+  firstSolutionButton.textContent = onlyRankedSolutionIsFirst
+    ? `Первое · ${enumerationExact ? 'самое запутанное' : 'лучшее среди найденных'}`
+    : !rankedSolutions.length && bestIsFirst
+      ? 'Первое · лучшее пока'
+      : 'Первое найденное';
+  firstSolutionButton.setAttribute(
+    'aria-pressed',
+    String(currentCollection === 'gallery' && currentSolutionIndex === 0),
+  );
+  bestSolutionButton.hidden = onlyRankedSolutionIsFirst || (!rankedSolutions.length && bestIsFirst);
+  bestSolutionButton.textContent = rankedSolutions.length
+    ? `${enumerationExact ? 'Топ запутанных' : 'Топ среди найденных'} · ${rankedSolutions.length}`
+    : 'Лучшее пока';
+  bestSolutionButton.setAttribute(
+    'aria-pressed',
+    String(currentCollection === 'ranked' || currentCollection === 'best'),
+  );
 }
 
 function resetBoard() {
@@ -128,10 +149,12 @@ function resetBoard() {
   solutionNavigation.hidden = true;
   latestResult = null;
   selectedWordIndex = -1;
-  solutions = [];
+  gallerySolutions = [];
+  rankedSolutions = [];
+  liveBestSolution = null;
+  currentCollection = 'gallery';
   currentSolutionIndex = -1;
   reportedCount = 0;
-  bestSolutionIndex = -1;
   enumerationExact = false;
 }
 
@@ -149,7 +172,7 @@ function handleWorkerFailure(message, failedWorker) {
 
 function ensureWorker() {
   if (worker) return worker;
-  const nextWorker = new Worker('./worker.js?v=3', { type: 'module' });
+  const nextWorker = new Worker('./worker.js?v=4', { type: 'module' });
   worker = nextWorker;
   nextWorker.addEventListener('message', handleWorkerMessage);
   nextWorker.addEventListener('error', () => {
@@ -227,9 +250,21 @@ function highlightWord(index) {
   resultMessage.textContent = `«${word}»: ${path.map((cell) => cell + 1).join(' → ')}.${details}`;
 }
 
-function renderSolutionAt(index) {
-  const result = solutions[index];
+function currentSolutions() {
+  if (currentCollection === 'ranked') return rankedSolutions;
+  if (currentCollection === 'best') return liveBestSolution ? [liveBestSolution] : [];
+  return gallerySolutions;
+}
+
+function renderSolutionAt(index, collection = currentCollection) {
+  const candidates = collection === 'ranked'
+    ? rankedSolutions
+    : collection === 'best'
+      ? liveBestSolution ? [liveBestSolution] : []
+      : gallerySolutions;
+  const result = candidates[index];
   if (!result) return;
+  currentCollection = collection;
   currentSolutionIndex = index;
   latestResult = result;
   boardGrid.innerHTML = result.board
@@ -257,19 +292,10 @@ function boardKey(solution) {
 
 function registerBestSolution(solution) {
   if (!solution) return;
-  const previousBestIndex = bestSolutionIndex;
-  let index = solutions.findIndex((candidate) => boardKey(candidate) === boardKey(solution));
-  if (index < 0) {
-    index = DISPLAY_LIMIT;
-    if (solutions.length > DISPLAY_LIMIT) {
-      solutions[index] = solution;
-    } else {
-      solutions.push(solution);
-    }
-  }
-  bestSolutionIndex = index;
-  if (currentSolutionIndex === previousBestIndex && previousBestIndex === DISPLAY_LIMIT) {
-    renderSolutionAt(bestSolutionIndex);
+  const wasViewingBest = currentCollection === 'best';
+  liveBestSolution = solution;
+  if (wasViewingBest) {
+    renderSolutionAt(0, 'best');
     return;
   }
   updateNavigation();
@@ -284,10 +310,10 @@ function acceptEnumerationUpdate(update) {
     return;
   }
   if (update.event !== 'solution') return;
-  solutions.push(update.solution);
+  gallerySolutions.push(update.solution);
   if (update.best_so_far) registerBestSolution(update.solution);
-  if (solutions.length === 1) {
-    renderSolutionAt(0);
+  if (gallerySolutions.length === 1) {
+    renderSolutionAt(0, 'gallery');
     setStatus('solving', 'считаем дальше');
   } else {
     updateNavigation();
@@ -297,7 +323,12 @@ function acceptEnumerationUpdate(update) {
 function finishEnumeration(result) {
   reportedCount = result.count ?? reportedCount;
   enumerationExact = Boolean(result.exact);
-  registerBestSolution(result.best_solution);
+  const wasViewingBest = currentCollection === 'best';
+  rankedSolutions = Array.isArray(result.top_solutions) ? result.top_solutions : [];
+  liveBestSolution = rankedSolutions[0] ?? result.best_solution ?? liveBestSolution;
+  if (wasViewingBest && rankedSolutions.length) {
+    renderSolutionAt(0, 'ranked');
+  }
   renderStats(result.stats);
   if (reportedCount > 0) {
     updateSolutionCount({ exact: result.exact });
@@ -358,6 +389,7 @@ form.addEventListener('submit', (event) => {
     words: wordsInput.value,
     timeLimitSeconds: TIME_LIMIT_SECONDS,
     displayLimit: DISPLAY_LIMIT,
+    topLimit: TOP_LIMIT,
     maxSolutions: MAX_SOLUTIONS,
   });
 });
@@ -382,7 +414,9 @@ wordPaths.addEventListener('click', (event) => {
 
 previousSolution.addEventListener('click', () => renderSolutionAt(currentSolutionIndex - 1));
 nextSolution.addEventListener('click', () => renderSolutionAt(currentSolutionIndex + 1));
-firstSolutionButton.addEventListener('click', () => renderSolutionAt(0));
-bestSolutionButton.addEventListener('click', () => renderSolutionAt(bestSolutionIndex));
+firstSolutionButton.addEventListener('click', () => renderSolutionAt(0, 'gallery'));
+bestSolutionButton.addEventListener('click', () => {
+  renderSolutionAt(0, rankedSolutions.length ? 'ranked' : 'best');
+});
 wordsInput.addEventListener('input', updateWordCount);
 updateWordCount();

@@ -88,9 +88,10 @@ def main() -> None:
     assert easiest["words"][0]["complexity"]["score"] == 0
 
     updates: list[str] = []
-    sparse = solver.enumerate_solutions("а", 5, 100, 10, updates.append)
+    sparse = solver.enumerate_solutions("а", 5, 100, 10, updates.append, 2)
     assert sparse["status"] == "complete" and sparse["exact"] is True
     assert sparse["count"] == sparse["stored_count"] == 3
+    assert sparse["top_count"] == len(sparse["top_solutions"]) == 2
     streamed = [json.loads(update) for update in updates]
     assert [update["count"] for update in streamed] == [1, 2, 3]
     assert all(sum(bool(letter) for letter in update["solution"]["board"]) == 1 for update in streamed)
@@ -105,6 +106,13 @@ def main() -> None:
     ranking_events = [json.loads(update) for update in ranking_updates]
     first_rank = ranking_events[0]["solution"]["complexity"]["minimum"]
     assert ranked["status"] == "complete" and ranked["count"] == 221
+    assert ranked["top_count"] == len(ranked["top_solutions"]) == 100
+    ranks = [
+        (solution["complexity"]["minimum"], solution["complexity"]["average"])
+        for solution in ranked["top_solutions"]
+    ]
+    assert ranks == sorted(ranks, reverse=True)
+    assert ranked["top_solutions"][0]["board"] == ranked["best_solution"]["board"]
     assert ranked["best_solution"]["complexity"]["minimum"] > first_rank
     assert any(update["event"] == "best" for update in ranking_events)
 
@@ -118,6 +126,7 @@ def main() -> None:
     )
     assert limited["status"] == "partial" and limited["exact"] is False
     assert limited["count"] == 2 and limited["stop_reason"] == "limit"
+    assert limited["top_count"] == len(limited["top_solutions"]) == 2
     assert limited["best_solution"]["complexity"]["minimum"] >= 0
     assert len(full_board_updates) == 2
     assert all(

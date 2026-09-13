@@ -8,7 +8,7 @@ async function getSolver() {
       self.postMessage({ type: 'progress', stage: 'loading' });
       const [pyodide, response] = await Promise.all([
         loadPyodide(),
-        fetch('./solver.py?v=3'),
+        fetch('./solver.py?v=4'),
       ]);
       if (!response.ok) throw new Error('Не удалось загрузить Python-алгоритм.');
       const source = await response.text();
@@ -44,6 +44,7 @@ self.addEventListener('message', async (event) => {
       event.data.maxSolutions ?? 100000,
       event.data.displayLimit ?? 200,
       onUpdate,
+      event.data.topLimit ?? 100,
     );
     const result = JSON.parse(String(resultProxy));
     resultProxy.destroy?.();
