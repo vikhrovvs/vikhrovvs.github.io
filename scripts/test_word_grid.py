@@ -15,6 +15,9 @@ SOLVER_PATH = ROOT / "site" / "word-grid" / "solver.py"
 
 def load_solver():
     sys.dont_write_bytecode = True
+    solver_directory = str(SOLVER_PATH.parent)
+    if solver_directory not in sys.path:
+        sys.path.insert(0, solver_directory)
     spec = importlib.util.spec_from_file_location("word_grid_solver", SOLVER_PATH)
     if spec is None or spec.loader is None:
         raise AssertionError("Could not load word-grid solver")

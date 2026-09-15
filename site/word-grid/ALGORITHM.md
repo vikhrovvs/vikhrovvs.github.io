@@ -129,13 +129,12 @@ C = (T + max(0, F - 1) + D / 2) / (L - 1)
 
 ## Где менять поведение
 
-- Нормализация и первичные проверки: `_normalise_words()` и `solve()`.
-- Автоматический переход к максимальному подмножеству: `maximise_words_and_enumerate()` и `_iter_candidate_subsets()`.
-- Список соседей поля: `_build_neighbour_masks()`.
-- Распространение ограничений: `WordGridCsp._propagate()`.
+- Нормализация, геометрия поля и первичные редукции: `grid_model.py`.
+- Автоматический переход к максимальному подмножеству: `maximise_words_and_enumerate()` в `solver.py`; генерация кандидатов — `_iter_candidate_subsets()` в `subset_selection.py`.
+- Распространение ограничений и ветвление: класс `WordGridCsp` в `csp.py`.
 - Разбиение случая с одной свободной клеткой: `_cell_count_plans()`.
-- Выбор следующей переменной и порядок клеток: `_choose_variable()` и `_ordered_cells()`.
-- Формула и выбор самого простого маршрута: `_path_complexity()` и `_find_easiest_word_path()`.
+- Выбор следующей переменной и порядок клеток: `_choose_variable()` и `_ordered_cells()` в `csp.py`.
+- Формула и выбор самого простого маршрута: `_path_complexity()` и `_find_easiest_word_path()` в `complexity.py`.
 - Оценка введённого поля и сравнительные ориентиры: `evaluate_board()`, `_average_benchmarks()` и `_median_from_counts()`.
 - Лимиты браузерного поиска, галереи и рейтинга: `DEFAULT_TIME_LIMIT_SECONDS`, `MAX_TIME_LIMIT_SECONDS`, `DISPLAY_LIMIT`, `TOP_LIMIT` и `MAX_SOLUTIONS` в `app.js`; Python содержит соответствующие безопасные границы.
 

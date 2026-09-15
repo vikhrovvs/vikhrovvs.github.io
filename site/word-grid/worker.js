@@ -1,18 +1,36 @@
 import { loadPyodide } from 'https://cdn.jsdelivr.net/pyodide/v314.0.6/full/pyodide.mjs';
 
+const PYTHON_FILES = [
+  'grid_model.py',
+  'complexity.py',
+  'csp.py',
+  'subset_selection.py',
+  'solver.py',
+];
+
 let solverPromise;
 
 async function getSolver() {
   if (!solverPromise) {
     solverPromise = (async () => {
       self.postMessage({ type: 'progress', stage: 'loading' });
-      const [pyodide, response] = await Promise.all([
+      const [pyodide, responses] = await Promise.all([
         loadPyodide(),
-        fetch('./solver.py?v=7'),
+        Promise.all(PYTHON_FILES.map((filename) => fetch(`./${filename}?v=8`))),
       ]);
-      if (!response.ok) throw new Error('Не удалось загрузить Python-алгоритм.');
-      const source = await response.text();
-      pyodide.runPython(source);
+      if (responses.some((response) => !response.ok)) {
+        throw new Error('Не удалось загрузить Python-алгоритм.');
+      }
+      const sources = await Promise.all(responses.map((response) => response.text()));
+      PYTHON_FILES.forEach((filename, index) => {
+        pyodide.FS.writeFile(`/home/pyodide/${filename}`, sources[index], { encoding: 'utf8' });
+      });
+      pyodide.runPython(`
+import sys
+if "/home/pyodide" not in sys.path:
+    sys.path.insert(0, "/home/pyodide")
+from solver import evaluate_json, maximise_and_enumerate_json
+      `);
       const enumerateJson = pyodide.globals.get('maximise_and_enumerate_json');
       const evaluateJson = pyodide.globals.get('evaluate_json');
       self.postMessage({ type: 'progress', stage: 'ready' });

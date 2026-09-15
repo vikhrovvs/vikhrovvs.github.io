@@ -22,7 +22,11 @@ site/
     ├── styles.css
     ├── app.js
     ├── worker.js
-    ├── solver.py
+    ├── solver.py          # публичный API и координация поиска
+    ├── grid_model.py      # геометрия, ввод и первичные проверки
+    ├── csp.py             # точный поиск по ограничениям
+    ├── complexity.py      # маршруты и оценка запутанности
+    ├── subset_selection.py # подбор максимального набора слов
     └── ALGORITHM.md
 ```
 

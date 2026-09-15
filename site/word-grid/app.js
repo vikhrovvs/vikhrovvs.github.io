@@ -280,7 +280,7 @@ function handleWorkerFailure(message, failedWorker) {
 
 function ensureWorker() {
   if (worker) return worker;
-  const nextWorker = new Worker('./worker.js?v=7', { type: 'module' });
+  const nextWorker = new Worker('./worker.js?v=8', { type: 'module' });
   worker = nextWorker;
   nextWorker.addEventListener('message', handleWorkerMessage);
   nextWorker.addEventListener('error', () => {

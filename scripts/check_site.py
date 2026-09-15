@@ -98,7 +98,11 @@ def main() -> int:
         SITE / "word-route" / "index.html",
         SITE / "word-grid" / "index.html",
         SITE / "word-grid" / "app.js",
+        SITE / "word-grid" / "complexity.py",
+        SITE / "word-grid" / "csp.py",
+        SITE / "word-grid" / "grid_model.py",
         SITE / "word-grid" / "solver.py",
+        SITE / "word-grid" / "subset_selection.py",
         SITE / "word-grid" / "styles.css",
         SITE / "word-grid" / "worker.js",
         ROOT / ".github" / "workflows" / "pages.yml",
@@ -108,7 +112,8 @@ def main() -> int:
         raise AssertionError("Missing required files: " + ", ".join(missing))
 
     html_count, reference_count = check_local_references()
-    ast.parse((SITE / "word-grid" / "solver.py").read_text(encoding="utf-8"))
+    for python_file in sorted((SITE / "word-grid").glob("*.py")):
+        ast.parse(python_file.read_text(encoding="utf-8"), filename=str(python_file))
     node_count, edge_count, word_count = check_graph()
     print(f"OK: {html_count} HTML files, {reference_count} local references")
     print(f"OK: graph has {node_count} nodes, {edge_count} edges, {word_count} unique words")
