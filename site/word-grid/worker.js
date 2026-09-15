@@ -8,12 +8,12 @@ async function getSolver() {
       self.postMessage({ type: 'progress', stage: 'loading' });
       const [pyodide, response] = await Promise.all([
         loadPyodide(),
-        fetch('./solver.py?v=6'),
+        fetch('./solver.py?v=7'),
       ]);
       if (!response.ok) throw new Error('Не удалось загрузить Python-алгоритм.');
       const source = await response.text();
       pyodide.runPython(source);
-      const enumerateJson = pyodide.globals.get('enumerate_json');
+      const enumerateJson = pyodide.globals.get('maximise_and_enumerate_json');
       const evaluateJson = pyodide.globals.get('evaluate_json');
       self.postMessage({ type: 'progress', stage: 'ready' });
       return { enumerateJson, evaluateJson };

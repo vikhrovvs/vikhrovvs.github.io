@@ -151,6 +151,46 @@ def main() -> None:
         for update in full_board_updates
     )
 
+    # More than 16 requested letters triggers the automatic fallback.  The
+    # first feasible candidate has 16 of the 17 words, which proves optimality.
+    selection_updates: list[str] = []
+    selected = solver.maximise_words_and_enumerate(
+        "\n".join("abcdefghijklmnopq"),
+        5,
+        1,
+        1,
+        selection_updates.append,
+        1,
+    )
+    assert selected["count"] == 1 and selected["word_selection"]["maximum_proven"] is True
+    assert selected["word_selection"]["input_count"] == 17
+    assert selected["word_selection"]["selected_count"] == 16
+    assert len(selected["word_selection"]["omitted_words"]) == 1
+    selection_events = [json.loads(update)["event"] for update in selection_updates]
+    assert "selection-progress" in selection_events
+    assert "selection" in selection_events
+    assert "solution" in selection_events
+
+    # With 16 mandatory letters x gets exactly one cell.  Nine different
+    # leaves cannot all touch it because a king-grid cell has at most eight
+    # neighbours; removing one word makes the remaining 14-word set feasible.
+    maximum_star = solver.maximise_words_and_enumerate(
+        "\n".join([
+            *("x" + letter for letter in "abcdefghi"),
+            *"jklmno",
+        ]),
+        5,
+        1,
+        1,
+        top_limit=1,
+    )
+    assert maximum_star["word_selection"]["selected_count"] == 14, maximum_star
+    assert maximum_star["word_selection"]["maximum_proven"] is True
+
+    empty_maximum = solver.maximise_words_and_enumerate("abcdefghijklmnopq", 1)
+    assert empty_maximum["status"] == "unsatisfiable"
+    assert empty_maximum["word_selection"]["selected_count"] == 0
+
     # Real 12-word inputs that previously found nothing within 20 seconds.
     regression_cases = [
         (

@@ -101,6 +101,10 @@ main { padding: clamp(2.8rem, 6vw, 5.6rem) 0 4rem; }
 .solution-summary { margin-bottom: 1rem; }
 .solution-summary strong { display: block; color: var(--accent); font: 600 clamp(2.5rem, 5vw, 4.5rem)/.9 var(--display); letter-spacing: -.055em; }
 .solution-summary span { display: block; margin-top: .45rem; color: #828a7d; font-size: .68rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.subset-notice { margin: 0 0 1rem; padding: .8rem .9rem; border: 1px solid rgba(255, 181, 107, .46); border-radius: 10px; background: rgba(255, 181, 107, .07); }
+.subset-notice strong { display: block; color: var(--orange); font-size: .78rem; }
+.subset-notice p { margin: .35rem 0 0; color: #b9bfb4; font-size: .7rem; line-height: 1.5; }
+.subset-notice .subset-omitted { color: #858d80; }
 .solution-complexity { display: flex; flex-wrap: wrap; gap: .5rem; margin: -.15rem 0 1rem; }
 .solution-complexity span { padding: .45rem .58rem; border: 1px solid #3b4237; border-radius: 7px; color: #8f9789; font-size: .68rem; }
 .solution-complexity strong { margin-left: .22rem; color: var(--paper); font-weight: 700; }

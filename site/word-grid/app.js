@@ -14,6 +14,10 @@ const wordPaths = document.querySelector('#word-paths');
 const solutionSummary = document.querySelector('#solution-summary');
 const solutionCount = document.querySelector('#solution-count');
 const solutionCountLabel = document.querySelector('#solution-count-label');
+const subsetNotice = document.querySelector('#subset-notice');
+const subsetTitle = document.querySelector('#subset-title');
+const subsetMessage = document.querySelector('#subset-message');
+const subsetOmitted = document.querySelector('#subset-omitted');
 const solutionNavigation = document.querySelector('#solution-navigation');
 const solutionPosition = document.querySelector('#solution-position');
 const storedSolutions = document.querySelector('#stored-solutions');
@@ -37,6 +41,7 @@ const bestAverage = document.querySelector('#best-average');
 const medianAverage = document.querySelector('#median-average');
 const bottomAverage = document.querySelector('#bottom-average');
 const comparisonNote = document.querySelector('#comparison-note');
+const evaluationScope = document.querySelector('#evaluation-scope');
 
 const DEFAULT_TIME_LIMIT_SECONDS = 20;
 const MAX_TIME_LIMIT_SECONDS = 600;
@@ -60,6 +65,7 @@ let benchmarkWordsKey = '';
 let activeSearchWordsKey = '';
 let evaluatedWordsKey = '';
 let activeRequestType = 'solve';
+let wordSelection = null;
 
 function parseVisibleWords(value) {
   return value
@@ -112,6 +118,29 @@ function updateWordCount() {
   const letters = new Set(words.join('')).size;
   wordCount.textContent = `${words.length} ${pluralForm(words.length, ['слово', 'слова', 'слов'])} · ${letters} ${pluralForm(letters, ['буква', 'буквы', 'букв'])}`;
   wordCount.dataset.complete = String(letters === 16);
+}
+
+function activeSolutionWords() {
+  return wordSelection?.selected_words?.length
+    ? wordSelection.selected_words.join('\n')
+    : wordsInput.value;
+}
+
+function applyWordSelection(selection) {
+  wordSelection = selection?.selected_count < selection?.input_count ? selection : null;
+  subsetNotice.hidden = !wordSelection;
+  if (!wordSelection) {
+    evaluationScope.textContent = 'Используются слова из поля слева';
+    return;
+  }
+
+  const { selected_count: selectedCount, input_count: inputCount, omitted_words: omittedWords } = wordSelection;
+  subsetTitle.textContent = `В квадрат вошло ${selectedCount} из ${inputCount}`;
+  subsetMessage.textContent = wordSelection.maximum_proven
+    ? 'Это максимальное возможное число слов из введённого набора.'
+    : 'Это лучшее подмножество, найденное за отведённое время.';
+  subsetOmitted.textContent = `Не вошли: ${omittedWords.map((word) => `«${word}»`).join(', ')}.`;
+  evaluationScope.textContent = `Используются ${selectedCount} выбранных ${pluralForm(selectedCount, ['слово', 'слова', 'слов'])}`;
 }
 
 function setStatus(state, label, message) {
@@ -226,6 +255,7 @@ function resetBoard() {
   averageBenchmarks = null;
   benchmarkWordsKey = '';
   evaluatedWordsKey = '';
+  applyWordSelection(null);
   updateHighlights();
 }
 
@@ -250,7 +280,7 @@ function handleWorkerFailure(message, failedWorker) {
 
 function ensureWorker() {
   if (worker) return worker;
-  const nextWorker = new Worker('./worker.js?v=6', { type: 'module' });
+  const nextWorker = new Worker('./worker.js?v=7', { type: 'module' });
   worker = nextWorker;
   nextWorker.addEventListener('message', handleWorkerMessage);
   nextWorker.addEventListener('error', () => {
@@ -286,6 +316,9 @@ function renderStats(stats) {
   }
   if (stats.search_plans > 1) details.push(`${stats.search_plans} сценариев для 16-й клетки`);
   if (stats.removed_words > 0) details.push(`${stats.removed_words} вложенных отброшено`);
+  if (stats.subset_candidates_tested > 0) {
+    details.push(`${stats.subset_candidates_tested.toLocaleString('ru-RU')} подмножеств проверено`);
+  }
   resultStats.textContent = details.join(' · ');
 }
 
@@ -385,7 +418,7 @@ function boardAsInput(board) {
 
 function renderEvaluationComparison(ownAverage) {
   evaluatedAverage.textContent = formatComplexity(ownAverage);
-  const comparable = averageBenchmarks && benchmarkWordsKey === normalisedWordsKey(wordsInput.value);
+  const comparable = averageBenchmarks && benchmarkWordsKey === normalisedWordsKey(activeSolutionWords());
   if (comparable) {
     bestAverage.textContent = formatComplexity(averageBenchmarks.best);
     medianAverage.textContent = formatComplexity(averageBenchmarks.median);
@@ -417,7 +450,7 @@ function openConfigurationEvaluator() {
   if (!configurationInput.value.trim() && latestResult?.board?.every(Boolean)) {
     configurationInput.value = boardAsInput(latestResult.board);
   }
-  if (evaluatedWordsKey !== normalisedWordsKey(wordsInput.value)) {
+  if (evaluatedWordsKey !== normalisedWordsKey(activeSolutionWords())) {
     evaluationComparison.hidden = true;
     comparisonNote.textContent = '';
     configurationMessage.dataset.state = '';
@@ -444,7 +477,7 @@ function finishEvaluation(result) {
     return;
   }
 
-  evaluatedWordsKey = normalisedWordsKey(wordsInput.value);
+  evaluatedWordsKey = normalisedWordsKey(activeSolutionWords());
   configurationMessage.dataset.state = '';
   configurationMessage.textContent = result.message;
   renderSolution(result);
@@ -466,6 +499,20 @@ function registerBestSolution(solution) {
 }
 
 function acceptEnumerationUpdate(update) {
+  if (update.event === 'selection-progress') {
+    const target = update.target_count;
+    setStatus(
+      'solving',
+      'подбираем максимум слов',
+      `Проверяем варианты из ${target} ${pluralForm(target, ['слова', 'слов', 'слов'])}; кандидатов проверено: ${update.tested.toLocaleString('ru-RU')}.`,
+    );
+    return;
+  }
+  if (update.event === 'selection') {
+    applyWordSelection(update.selection);
+    setStatus('solving', 'максимум найден', 'Подмножество выбрано; теперь перечисляем и ранжируем его решения.');
+    return;
+  }
   reportedCount = Math.max(reportedCount, update.count ?? 0);
   updateSolutionCount({ exact: false, running: true });
   if (update.event === 'best') {
@@ -484,10 +531,12 @@ function acceptEnumerationUpdate(update) {
 }
 
 function finishEnumeration(result) {
+  const resultSelection = result.word_selection;
+  applyWordSelection(resultSelection);
   reportedCount = result.count ?? reportedCount;
   enumerationExact = Boolean(result.exact);
   averageBenchmarks = result.average_benchmarks ?? null;
-  benchmarkWordsKey = averageBenchmarks ? activeSearchWordsKey : '';
+  benchmarkWordsKey = averageBenchmarks ? normalisedWordsKey(activeSolutionWords()) : '';
   const wasViewingBest = currentCollection === 'best';
   rankedSolutions = Array.isArray(result.top_solutions) ? result.top_solutions : [];
   liveBestSolution = rankedSolutions[0] ?? result.best_solution ?? liveBestSolution;
@@ -506,6 +555,7 @@ function finishEnumeration(result) {
   }
 
   resetBoard();
+  applyWordSelection(resultSelection);
   renderStats(result.stats);
   const label = result.status === 'timeout' ? 'нужно больше времени' :
     result.status === 'invalid' ? 'проверьте ввод' : 'решения нет';
@@ -609,7 +659,7 @@ configurationEvaluator.addEventListener('submit', (event) => {
     type: 'evaluate',
     requestId,
     board: configurationInput.value,
-    words: wordsInput.value,
+    words: activeSolutionWords(),
   });
 });
 configurationInput.addEventListener('input', () => {
@@ -620,7 +670,8 @@ configurationInput.addEventListener('input', () => {
 });
 wordsInput.addEventListener('input', () => {
   updateWordCount();
-  if (currentCollection === 'evaluation' && evaluatedWordsKey !== normalisedWordsKey(wordsInput.value)) {
+  if (wordSelection) applyWordSelection(null);
+  if (currentCollection === 'evaluation' && evaluatedWordsKey !== normalisedWordsKey(activeSolutionWords())) {
     evaluationComparison.hidden = true;
     configurationMessage.dataset.state = '';
     configurationMessage.textContent = 'Список слов изменился — оцените конфигурацию заново.';

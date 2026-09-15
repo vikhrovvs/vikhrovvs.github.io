@@ -115,6 +115,10 @@ class InputError(ValueError):
     """Raised when the submitted word list cannot be interpreted."""
 
 
+class SubsetSearchIncomplete(Exception):
+    """Raised when a candidate exceeds a browser safety limit."""
+
+
 def _normalise_words(raw_words: str) -> list[str]:
     words: list[str] = []
     seen: set[str] = set()
@@ -952,6 +956,91 @@ def _unique_solution_phrase(count: int) -> str:
     return f"{count} уникальных решений"
 
 
+def _iter_candidate_subsets(
+    words: list[str],
+    maximum_size: int,
+    deadline: float,
+):
+    """Yield cell-budget-feasible subsets in decreasing cardinality.
+
+    The generator never materialises ``2 ** n`` subsets.  It constructs one
+    candidate at a time and prunes a branch as soon as the per-letter maxima
+    require more than 16 cells.  Words that share popular letters are tried
+    first, which tends to find a feasible maximum candidate early.
+    """
+
+    valid_indices = [index for index, word in enumerate(words) if len(word) <= CELL_COUNT]
+    requirements = [Counter(word) for word in words]
+    word_frequency = Counter(letter for word in words for letter in set(word))
+
+    def compatibility_key(index: int) -> tuple[float, int, int]:
+        letters = requirements[index]
+        rarity = sum(1 / word_frequency[letter] for letter in letters)
+        return rarity, -len(words[index]), index
+
+    ordered_indices = sorted(valid_indices, key=compatibility_key)
+    upper_size = min(maximum_size, len(ordered_indices))
+    visited_nodes = 0
+
+    for target_size in range(upper_size, 0, -1):
+        selected: list[int] = []
+        required_counts: dict[str, int] = {}
+        required_total = 0
+
+        def visit(position: int):
+            nonlocal required_total, visited_nodes
+            visited_nodes += 1
+            if visited_nodes % 1024 == 0 and time.perf_counter() >= deadline:
+                raise SearchTimedOut
+
+            selected_count = len(selected)
+            remaining = len(ordered_indices) - position
+            if selected_count == target_size:
+                yield [words[index] for index in sorted(selected)]
+                return
+            if selected_count + remaining < target_size:
+                return
+
+            index = ordered_indices[position]
+            changes: list[tuple[str, int]] = []
+            added_cells = 0
+            for letter, count in requirements[index].items():
+                previous = required_counts.get(letter, 0)
+                if count > previous:
+                    changes.append((letter, previous))
+                    added_cells += count - previous
+
+            if required_total + added_cells <= CELL_COUNT:
+                for letter, _ in changes:
+                    required_counts[letter] = requirements[index][letter]
+                required_total += added_cells
+                selected.append(index)
+                yield from visit(position + 1)
+                selected.pop()
+                required_total -= added_cells
+                for letter, previous in changes:
+                    if previous:
+                        required_counts[letter] = previous
+                    else:
+                        del required_counts[letter]
+
+            yield from visit(position + 1)
+
+        yield from visit(0)
+
+
+def _selection_metadata(all_words: list[str], selected_words: list[str], tested: int) -> dict:
+    selected_set = set(selected_words)
+    return {
+        "input_count": len(all_words),
+        "selected_count": len(selected_words),
+        "selected_words": selected_words,
+        "omitted_words": [word for word in all_words if word not in selected_set],
+        "maximum_proven": True,
+        "candidates_tested": tested,
+    }
+
+
 def _median_from_counts(counts: Counter[float], total: int) -> float:
     """Return the exact median of a frequency table without storing samples."""
 
@@ -1318,6 +1407,182 @@ def enumerate_solutions(
     }
 
 
+def maximise_words_and_enumerate(
+    raw_words: str,
+    time_limit_seconds: float = DEFAULT_TIME_LIMIT_SECONDS,
+    max_solutions: int = DEFAULT_MAX_UNIQUE_SOLUTIONS,
+    display_limit: int = DEFAULT_DISPLAY_LIMIT,
+    on_update: Callable[[str], object] | None = None,
+    top_limit: int = DEFAULT_TOP_LIMIT,
+) -> dict:
+    """Keep the normal enumeration, falling back to a maximum word subset.
+
+    A subset search starts only after the complete input has been proved
+    impossible.  Candidates are checked in decreasing cardinality, so the
+    first satisfiable one is an exact maximum-cardinality subset.  If the
+    shared deadline expires, no smaller candidate is presented as optimal.
+    """
+
+    started = time.perf_counter()
+    time_limit_seconds = max(0.1, min(float(time_limit_seconds), MAX_TIME_LIMIT_SECONDS))
+    deadline = started + time_limit_seconds
+    full_result = enumerate_solutions(
+        raw_words,
+        time_limit_seconds,
+        max_solutions,
+        display_limit,
+        on_update,
+        top_limit,
+    )
+    if full_result.get("status") != "unsatisfiable":
+        return full_result
+
+    try:
+        words = _normalise_words(raw_words)
+    except InputError:
+        return full_result
+
+    tested = 0
+    seen_essential_sets: set[tuple[str, ...]] = set()
+    last_progress = 0.0
+
+    def emit(payload: dict) -> None:
+        if on_update is not None:
+            on_update(json.dumps(payload, ensure_ascii=False))
+
+    try:
+        candidates = _iter_candidate_subsets(words, len(words) - 1, deadline)
+        for selected_words in candidates:
+            now = time.perf_counter()
+            if now >= deadline:
+                raise SearchTimedOut
+
+            essential_key = tuple(_essential_words(selected_words))
+            if essential_key in seen_essential_sets:
+                continue
+            seen_essential_sets.add(essential_key)
+            tested += 1
+            if tested == 1 or now - last_progress >= 0.15:
+                emit({
+                    "event": "selection-progress",
+                    "target_count": len(selected_words),
+                    "tested": tested,
+                })
+                last_progress = now
+
+            remaining = deadline - time.perf_counter()
+            candidate_result = solve("\n".join(selected_words), remaining)
+            if candidate_result["status"] == "timeout":
+                raise SearchTimedOut
+            if candidate_result["status"] == "invalid":
+                raise SubsetSearchIncomplete(candidate_result["message"])
+            if candidate_result["status"] != "solved":
+                continue
+
+            selection = _selection_metadata(words, selected_words, tested)
+            emit({"event": "selection", "selection": selection})
+            subset_search_elapsed_ms = round((time.perf_counter() - started) * 1000)
+            remaining = deadline - time.perf_counter()
+            selected_raw_words = "\n".join(selected_words)
+            if remaining > 0.1:
+                result = enumerate_solutions(
+                    selected_raw_words,
+                    remaining,
+                    max_solutions,
+                    display_limit,
+                    on_update,
+                    top_limit,
+                )
+            else:
+                result = {"status": "timeout", "count": 0}
+
+            # The feasibility check already produced a board.  Preserve it if
+            # the shared time limit ended before enumeration rediscovered it.
+            if not result.get("count"):
+                solution = {
+                    "board": candidate_result["board"],
+                    "words": candidate_result["words"],
+                    "complexity": candidate_result["complexity"],
+                }
+                emit({
+                    "event": "solution",
+                    "count": 1,
+                    "solution": solution,
+                    "best_so_far": True,
+                })
+                average = solution["complexity"]["average"]
+                result = {
+                    "status": "partial",
+                    "message": (
+                        f"Максимальное подмножество найдено, но лимита времени хватило "
+                        "только на одно поле для него."
+                    ),
+                    "count": 1,
+                    "exact": False,
+                    "stored_count": 1,
+                    "top_count": 1,
+                    "top_solutions": [solution],
+                    "average_benchmarks": {
+                        "best": average,
+                        "median": average,
+                        "bottom_100_average": average,
+                        "bottom_count": 1,
+                        "sample_count": 1,
+                    },
+                    "best_solution": solution,
+                    "best_discovery_index": 1,
+                    "stop_reason": "timeout",
+                    "stats": candidate_result.get("stats", {}),
+                }
+
+            result["word_selection"] = selection
+            result.setdefault("stats", {})["subset_candidates_tested"] = tested
+            result["stats"]["subset_search_elapsed_ms"] = subset_search_elapsed_ms
+            return result
+    except SearchTimedOut:
+        return {
+            "status": "timeout",
+            "message": (
+                f"Полный набор не складывается. За {time_limit_seconds:g} с не удалось "
+                "доказать, какое подмножество содержит максимум слов. Увеличьте лимит времени."
+            ),
+            "count": 0,
+            "exact": False,
+            "stored_count": 0,
+            "top_count": 0,
+            "top_solutions": [],
+            "average_benchmarks": None,
+            "subset_search": {"candidates_tested": tested},
+        }
+    except SubsetSearchIncomplete as error:
+        return {
+            "status": "invalid",
+            "message": (
+                "Не удалось доказать максимальность подмножества из-за защитного "
+                f"ограничения браузерного решателя. {error}"
+            ),
+            "count": 0,
+            "exact": False,
+            "stored_count": 0,
+            "top_count": 0,
+            "top_solutions": [],
+            "average_benchmarks": None,
+            "subset_search": {"candidates_tested": tested},
+        }
+
+    return {
+        "status": "unsatisfiable",
+        "message": "Ни одно введённое слово нельзя разместить на поле по правилам.",
+        "count": 0,
+        "exact": True,
+        "stored_count": 0,
+        "top_count": 0,
+        "top_solutions": [],
+        "average_benchmarks": None,
+        "word_selection": _selection_metadata(words, [], tested),
+    }
+
+
 def solve_json(raw_words: str, time_limit_seconds: float = DEFAULT_TIME_LIMIT_SECONDS) -> str:
     """Stable string boundary used by the JavaScript worker."""
 
@@ -1341,6 +1606,27 @@ def enumerate_json(
     """Streaming JSON boundary used by the JavaScript worker."""
 
     result = enumerate_solutions(
+        raw_words,
+        time_limit_seconds,
+        max_solutions,
+        display_limit,
+        on_update,
+        top_limit,
+    )
+    return json.dumps(result, ensure_ascii=False)
+
+
+def maximise_and_enumerate_json(
+    raw_words: str,
+    time_limit_seconds: float = DEFAULT_TIME_LIMIT_SECONDS,
+    max_solutions: int = DEFAULT_MAX_UNIQUE_SOLUTIONS,
+    display_limit: int = DEFAULT_DISPLAY_LIMIT,
+    on_update: Callable[[str], object] | None = None,
+    top_limit: int = DEFAULT_TOP_LIMIT,
+) -> str:
+    """Streaming JSON boundary with automatic maximum-subset fallback."""
+
+    result = maximise_words_and_enumerate(
         raw_words,
         time_limit_seconds,
         max_solutions,
