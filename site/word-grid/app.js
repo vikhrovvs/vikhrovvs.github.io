@@ -113,11 +113,23 @@ function solutionLabel(count, running) {
     : `уникальных ${form === 'few' ? 'решения' : 'решений'}`;
 }
 
+function minimumRequiredCells(words) {
+  const maximumCounts = new Map();
+  for (const word of words) {
+    const counts = new Map();
+    for (const letter of word) counts.set(letter, (counts.get(letter) ?? 0) + 1);
+    for (const [letter, count] of counts) {
+      maximumCounts.set(letter, Math.max(maximumCounts.get(letter) ?? 0, count));
+    }
+  }
+  return [...maximumCounts.values()].reduce((total, count) => total + count, 0);
+}
+
 function updateWordCount() {
   const words = [...new Set(parseVisibleWords(wordsInput.value).map((word) => word.toLocaleLowerCase('ru-RU').normalize('NFC')))];
-  const letters = new Set(words.join('')).size;
-  wordCount.textContent = `${words.length} ${pluralForm(words.length, ['слово', 'слова', 'слов'])} · ${letters} ${pluralForm(letters, ['буква', 'буквы', 'букв'])}`;
-  wordCount.dataset.complete = String(letters === 16);
+  const minimumCells = minimumRequiredCells(words);
+  wordCount.textContent = `${words.length} ${pluralForm(words.length, ['слово', 'слова', 'слов'])} · минимум ${minimumCells} ${pluralForm(minimumCells, ['клетка', 'клетки', 'клеток'])}`;
+  wordCount.dataset.complete = String(minimumCells === 16);
 }
 
 function activeSolutionWords() {
@@ -308,6 +320,9 @@ function renderStats(stats) {
   }
   const details = [formatElapsed(stats.elapsed_ms ?? 0)];
   if (Number.isFinite(stats.nodes)) details.push(`${stats.nodes.toLocaleString('ru-RU')} узлов поиска`);
+  if (Number.isFinite(stats.minimum_cells)) {
+    details.push(`минимум ${stats.minimum_cells} ${pluralForm(stats.minimum_cells, ['клетка', 'клетки', 'клеток'])}`);
+  }
   if (Number.isFinite(stats.unique_letters)) {
     details.push(`${stats.unique_letters} ${pluralForm(stats.unique_letters, ['уникальная буква', 'уникальные буквы', 'уникальных букв'])}`);
   }

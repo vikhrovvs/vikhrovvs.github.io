@@ -61,6 +61,9 @@ def main() -> None:
     nested = assert_solution(solver, "скотина\nкот\nток")
     assert nested["stats"]["removed_words"] == 2
     assert_solution(solver, "топот\nпотоп")
+    repeated_letters = assert_solution(solver, "око\nлоб")
+    assert repeated_letters["stats"]["minimum_cells"] == 5
+    assert repeated_letters["stats"]["unique_letters"] == 4
 
     too_long = solver.solve("abcdefghijklmnopq")
     assert too_long["status"] == "unsatisfiable"
