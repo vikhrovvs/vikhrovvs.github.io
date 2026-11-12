@@ -105,6 +105,11 @@ def main() -> int:
         SITE / "word-grid" / "subset_selection.py",
         SITE / "word-grid" / "styles.css",
         SITE / "word-grid" / "worker.js",
+        SITE / "ladder-graph" / "index.html",
+        SITE / "ladder-graph" / "app.js",
+        SITE / "ladder-graph" / "styles.css",
+        SITE / "ladder-graph" / "data" / "archive.json",
+        SITE / "ladder-graph" / "data" / "graph.json",
         ROOT / ".github" / "workflows" / "pages.yml",
     ]
     missing = [str(path.relative_to(ROOT)) for path in required if not path.exists()]
@@ -115,9 +120,42 @@ def main() -> int:
     for python_file in sorted((SITE / "word-grid").glob("*.py")):
         ast.parse(python_file.read_text(encoding="utf-8"), filename=str(python_file))
     node_count, edge_count, word_count = check_graph()
+    check_ladder_graph()
     print(f"OK: {html_count} HTML files, {reference_count} local references")
     print(f"OK: graph has {node_count} nodes, {edge_count} edges, {word_count} unique words")
     return 0
+
+
+def check_ladder_graph() -> None:
+    folder = SITE / "ladder-graph" / "data"
+    archive = json.loads((folder / "archive.json").read_text(encoding="utf-8"))
+    graph = json.loads((folder / "graph.json").read_text(encoding="utf-8"))
+    games = archive["games"]
+    assert not archive["failures"], "Ladder export has failures"
+    assert len({g["number"] for g in games}) == len(games) == len(archive["discovered"])
+    assert {g["number"] for g in games} == set(archive["discovered"])
+    original_clues = {(g["number"], t["index"]): t for g in games for t in g["transitions"]}
+    for game in games:
+        assert len(game["transitions"]) == game["expectedWords"] - 1
+        assert len({t["index"] for t in game["transitions"]}) == len(game["transitions"])
+        assert all(t["from"] and t["to"] and t["text"] for t in game["transitions"])
+    nodes = graph["nodes"]
+    assert len({n["id"] for n in nodes}) == len(nodes)
+    seen_pairs, seen_clues = set(), set()
+    for edge in graph["edges"]:
+        a, b = edge["a"], edge["b"]
+        assert 0 <= a <= b < len(nodes) and (a, b) not in seen_pairs
+        seen_pairs.add((a, b))
+        assert edge["clues"]
+        for clue in edge["clues"]:
+            key = clue["game"], clue["index"]
+            assert key in original_clues and key not in seen_clues
+            assert clue["text"] == original_clues[key]["text"]
+            assert {nodes[a]["id"], nodes[b]["id"]} == {clue["from"], clue["to"]}
+            seen_clues.add(key)
+    assert seen_clues == original_clues.keys()
+    assert graph["gameCount"] == len(games) and graph["clueCount"] == len(seen_clues)
+    print(f"OK: ladder archive has {len(games)} games, {len(seen_clues)} clues, {len(nodes)} words, {len(seen_pairs)} edges")
 
 
 if __name__ == "__main__":

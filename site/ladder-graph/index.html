@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#11130f" />
+  <meta name="description" content="Карта слов и подсказок из архива лесенок Interoves." />
+  <title>Лесенки — граф связей</title>
+  <link rel="stylesheet" href="./styles.css?v=2" />
+  <script src="./app.js?v=2" defer></script>
+</head>
+<body>
+  <header>
+    <a class="back" href="../">← Проекты</a>
+    <a class="brand" href="./">Лесенки<span> / граф связей</span></a>
+    <a href="https://interoves.com/ladder/" target="_blank" rel="noreferrer">Interoves ↗</a>
+  </header>
+  <main>
+    <section class="intro">
+      <div><p class="eyebrow">АРХИВ АССОЦИАЦИЙ</p><h1>Слова, между которыми<br />есть история<span>.</span></h1></div>
+      <div class="intro-note"><p>Каждая линия — переход из настоящей лесенки. Выберите слово, чтобы прочитать подсказки и исследовать его связи.</p><p id="coverage">Загружаем архив…</p></div>
+    </section>
+    <div class="stats" id="stats" aria-live="polite"></div>
+    <section class="explorer" aria-label="Граф переходов">
+      <div class="map-panel">
+        <div class="toolbar">
+          <form id="search-form" role="search"><label class="sr-only" for="search">Найти слово</label><input id="search" type="search" placeholder="Найти слово…" list="word-options" autocomplete="off" /><datalist id="word-options"></datalist><button type="submit">Найти ↗</button></form>
+          <label class="game-filter">Лесенка <select id="game"><option value="">Все</option></select></label>
+        </div>
+        <div class="viewbar"><div class="view-tabs" aria-label="Область графа"><button id="overview" class="active" type="button" aria-pressed="true">Весь граф</button><button id="neighborhood" type="button" aria-pressed="false">Окрестность</button></div><span id="visible-count"></span></div>
+        <p class="graph-key"><span aria-hidden="true">●</span> Крупные яркие вершины — больше двух связей. Цвет — компонента связности.</p>
+        <div class="stage"><canvas id="graph" tabindex="0" aria-label="Граф слов. Перетаскивайте карту; колесо меняет масштаб. Стрелки сдвигают карту, плюс и минус меняют масштаб. Слова и связи также доступны в панели справа."></canvas><div id="status" role="status">Загрузка графа…</div><div class="zoom"><button id="zoom-in" aria-label="Приблизить">+</button><button id="zoom-out" aria-label="Отдалить">−</button><button id="fit" aria-label="Показать граф целиком">⤢</button></div><span class="map-note">ПЕРЕТАСКИВАНИЕ · МАСШТАБ КОЛЕСОМ</span></div>
+      </div>
+      <aside aria-label="Слово и подсказки"><p class="eyebrow">ВЫБРАННОЕ СЛОВО</p><h2 id="selected-word">—</h2><p id="word-meta" class="muted"></p><div id="neighbors"></div></aside>
+    </section>
+    <footer>Источник: авторские лесенки сообщества <a href="https://interoves.com/ladder/">Interoves</a>, которому я очень благодарен за идею. Осторожно: здесь раскрываются ответы.</footer>
+  </main>
+</body>
+</html>
