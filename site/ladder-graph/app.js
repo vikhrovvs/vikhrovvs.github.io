@@ -1,6 +1,7 @@
 'use strict';
 
 import { schematicLayout } from './layout.js?v=1';
+import { optimizedLayout } from './optimized-layout.js?v=1';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('graph'), ctx = canvas.getContext('2d');
@@ -10,7 +11,7 @@ let visibleNodes = [], visibleEdges = [], camera = { x: 0, y: 0, scale: 1 }, wid
 let drag = null, frame = 0;
 let rotatingExamples = [], exampleCursor = 0;
 let highlightedPath = null, pathPositions = new Map(), pathEdges = new Set(), pathCursor = 0;
-let originalPositions, schematic, layoutMode = 'schematic';
+let originalPositions, schematic, optimized = null, layoutMode = 'optimized';
 const edgeKey = (a, b) => `${Math.min(a, b)}:${Math.max(a, b)}`;
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 // Golden-angle hues give every connected component its own bright color.
@@ -144,12 +145,14 @@ function showComponent(component) {
 function requestDraw() { if (!frame) frame = requestAnimationFrame(() => { frame = 0; draw(); }); }
 function applyLayout(mode) {
   layoutMode = mode;
-  const positions = mode === 'schematic' ? schematic.positions : originalPositions;
+  const positions = mode === 'original' ? originalPositions : optimized?.positions || schematic.positions;
   graph.nodes.forEach((node, i) => Object.assign(node, positions[i]));
   for (const button of document.querySelectorAll('[data-layout]')) button.setAttribute('aria-pressed', String(button.dataset.layout === mode));
-  $('layout-note').textContent = mode === 'schematic'
-    ? 'Одиночные лесенки вытянуты в линии. Развилки и настоящие циклы сохранены. Большая компонента — без изменений.'
-    : 'Исходная силовая раскладка всех компонент. Переключите на схемы, чтобы распутать маленькие лесенки.';
+  $('layout-note').textContent = mode === 'original'
+    ? 'Исходная силовая раскладка всех компонент.'
+    : optimized
+      ? `Маленькие лесенки вытянуты в схемы. В большой компоненте ${optimized.crossings.toLocaleString('ru')} пересекающиеся пары рёбер вместо ${optimized.originalCrossings.toLocaleString('ru')}, включая касания и наложения. Все слова и связи сохранены; минимум не доказан.`
+      : 'Маленькие лесенки вытянуты в схемы. Для большой компоненты сейчас используется исходная раскладка: готовые координаты недоступны или граф обновился.';
   focusComponent();
 }
 function focusComponent() {
@@ -210,7 +213,7 @@ function screen(node) { return { x: (node.x - camera.x) * camera.scale + width /
 function draw() {
   const dpr = window.devicePixelRatio || 1;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, width, height);
-  if (layoutMode === 'schematic') for (const panel of schematic.panels) {
+  if (layoutMode !== 'original') for (const panel of optimized?.panels || schematic.panels) {
     const p = screen(panel), w = panel.width * camera.scale, h = panel.height * camera.scale;
     if (p.x > width || p.y > height || p.x + w < 0 || p.y + h < 0) continue;
     ctx.globalAlpha = highlightedPath ? .25 : 1;
@@ -230,7 +233,7 @@ function draw() {
     ctx.globalAlpha = highlightedPath && !pathEdge ? .15 : 1;
     const a = screen(graph.nodes[e.a]), b = screen(graph.nodes[e.b]), active = e.a === selected || e.b === selected;
     const multiplicity = e.clues.length, multiple = multiplicity > 1;
-    const small = layoutMode === 'schematic' && schematic.components.has(graph.nodes[e.a].component);
+    const small = layoutMode !== 'original' && schematic.components.has(graph.nodes[e.a].component);
     ctx.strokeStyle = pathEdge ? '#69ead7' : multiple ? (active ? '#ffd19b' : '#ffb56bc9') : active ? '#d8ff43b0' : small ? componentColor(graph.nodes[e.a].component, .5) : '#88977b38';
     ctx.lineWidth = pathEdge ? 3 : multiple ? 2.6 + (multiplicity - 2) * .8 + (e === selectedEdge ? 1 : 0) : active ? 1.8 : .8;
     ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
@@ -254,19 +257,20 @@ function draw() {
     const n = graph.nodes[i], p = screen(n), active = i === selected || (selectedEdge && (i === selectedEdge.a || i === selectedEdge.b)), neighbor = near.has(i);
     if (p.x < -100 || p.x > width + 100 || p.y < -40 || p.y > height + 40) continue;
     const tier = prominenceTier(n.degree), hub = tier > 0;
-    const radius = (hub ? 3.4 + tier * 1.65 : 2.8) + (active ? 2 : 0);
+    const stationScale = layoutMode === 'optimized' && n.component === optimized?.component ? Math.max(.38, Math.min(1, Math.sqrt(camera.scale * 2))) : 1;
+    const radius = ((hub ? 3.4 + tier * 1.65 : 2.8) + (active ? 2 : 0)) * stationScale;
     if (hub || active) {
       ctx.shadowColor = active ? '#d8ff43' : componentColor(n.component, .65);
-      ctx.shadowBlur = active ? 16 : tier * 2;
+      ctx.shadowBlur = (active ? 16 : tier * 2) * stationScale;
     }
     ctx.fillStyle = pathNode ? '#69ead7' : componentColor(n.component, active || neighbor ? 1 : hub ? Math.min(1, .55 + tier * .12) : .4);
     ctx.beginPath(); ctx.arc(p.x, p.y, radius, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0;
     if (hub || active) {
       ctx.strokeStyle = active ? '#d8ff43' : componentColor(n.component, Math.min(.85, .25 + tier * .13));
-      ctx.lineWidth = active ? 2.5 : .6 + tier * .45;
-      ctx.beginPath(); ctx.arc(p.x, p.y, radius + 2 + tier * .4, 0, Math.PI * 2); ctx.stroke();
+      ctx.lineWidth = (active ? 2.5 : .6 + tier * .45) * stationScale;
+      ctx.beginPath(); ctx.arc(p.x, p.y, radius + (2 + tier * .4) * stationScale, 0, Math.PI * 2); ctx.stroke();
     }
-    const endpoint = layoutMode === 'schematic' && schematic.components.has(n.component) && n.degree === 1 && camera.scale > .18;
+    const endpoint = layoutMode !== 'original' && schematic.components.has(n.component) && n.degree === 1 && camera.scale > .18;
     if ((!highlightedPath || pathNode || active) && (active || neighbor || camera.scale > .8 || hub || endpoint)) labels.push({ i, n, p, active, neighbor, radius, tier, endpoint });
   }
   ctx.globalAlpha = 1;
@@ -289,9 +293,9 @@ function fit() {
 function fitNodes(indices) {
   if (!indices.length || width < 130 || height < 110) return;
   const points = indices.map((i) => graph.nodes[i]);
-  if (layoutMode === 'schematic') {
+  if (layoutMode !== 'original') {
     const included = new Set(indices);
-    for (const panel of schematic.panels) if (panel.indices.every((i) => included.has(i))) {
+    for (const panel of optimized?.panels || schematic.panels) if (panel.indices.every((i) => included.has(i))) {
       points.push(panel, { x: panel.x + panel.width, y: panel.y + panel.height });
     }
   }
@@ -355,6 +359,11 @@ async function init() {
     graph = await response.json();
     originalPositions = graph.nodes.map(({ x, y }) => ({ x, y }));
     schematic = schematicLayout(graph);
+    try {
+      const coordinates = await fetch('./optimized-coordinates.json?v=1');
+      if (!coordinates.ok) throw new Error(`HTTP ${coordinates.status}: coordinates`);
+      optimized = await optimizedLayout(graph, schematic, await coordinates.json());
+    } catch (error) { console.warn('Optimized layout unavailable; using original coordinates for the large component.', error); }
     adjacency = graph.nodes.map(() => []);
     graph.edges.forEach((edge, i) => { adjacency[edge.a].push(i); if (edge.a !== edge.b) adjacency[edge.b].push(i); });
     componentStats = summarizeComponents();
@@ -372,7 +381,7 @@ async function init() {
       $('expand-map').textContent = expanded ? 'Вернуть панели ↙' : 'Развернуть карту ↗';
     });
     document.querySelectorAll('[data-layout]').forEach((button) => button.addEventListener('click', () => applyLayout(button.dataset.layout)));
-    applyLayout('schematic');
+    applyLayout('optimized');
     $('visible-count').textContent = `${visibleNodes.length} слов · ${visibleEdges.length} связей`;
     const stats = [[graph.gameCount, 'лесенок'], [graph.nodes.length, 'слов'], [graph.edges.length, 'связей'], [graph.clueCount, 'подсказок']];
     $('stats').replaceChildren(...stats.map(([n, text]) => { const s = element('span'); s.append(element('strong', n.toLocaleString('ru')), document.createTextNode(text)); return s; }));
