@@ -6,6 +6,8 @@ const normalize = (s) => s.trim().toLocaleLowerCase('ru').normalize('NFC').repla
 let graph, archive, adjacency, componentStats, selected = 0;
 let visibleNodes = [], visibleEdges = [], camera = { x: 0, y: 0, scale: 1 }, width = 1, height = 1;
 let drag = null, frame = 0;
+let degreeExamples = [], degreeCursor = 0;
+const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 // Golden-angle hues give every connected component its own bright color.
 const prominenceTier = (degree) => Math.max(0, Math.floor((degree - 1) / 2));
 const componentColor = (component, alpha = 1) => `hsla(${(component * 137.508 + 80) % 360}, 82%, 68%, ${alpha})`;
@@ -19,6 +21,61 @@ function sourceLink(number) {
   const a = element('a', `Лесенка №${number} ↗`);
   a.href = `https://interoves.com/ladder/${number}/`; a.target = '_blank'; a.rel = 'noreferrer';
   return a;
+}
+function plural(number, forms) {
+  const n = number % 100;
+  return forms[n >= 11 && n <= 14 ? 2 : number % 10 === 1 ? 0 : number % 10 >= 2 && number % 10 <= 4 ? 1 : 2];
+}
+function buildDegreeStatistics() {
+  const groups = new Map();
+  graph.nodes.forEach((node, index) => {
+    if (!groups.has(node.degree)) groups.set(node.degree, []);
+    groups.get(node.degree).push(index);
+  });
+  const maximum = Math.max(...groups.keys()), list = $('degree-list');
+  for (let degree = 0; degree <= maximum; degree++) {
+    const pool = groups.get(degree) || [];
+    const row = element(pool.length ? 'button' : 'div', undefined, 'degree-entry');
+    row.dataset.degree = degree; row.dataset.count = pool.length;
+    const stat = element('span', undefined, 'degree-stat');
+    const label = element('span'); label.append(element('strong', degree), document.createTextNode(` ${plural(degree, ['сосед', 'соседа', 'соседей'])}`));
+    stat.append(label, element('span', `${pool.length.toLocaleString('ru')} ${plural(pool.length, ['слово', 'слова', 'слов'])}`, 'degree-count'));
+    row.append(stat);
+    if (pool.length) {
+      row.type = 'button';
+      const word = element('span', undefined, 'degree-word');
+      const entry = { pool, current: Math.floor(Math.random() * pool.length), row, word, degree };
+      function updateLabel() {
+        const text = graph.nodes[pool[entry.current]].label;
+        word.textContent = text; row.title = text;
+        row.setAttribute('aria-label', `${degree} ${plural(degree, ['сосед', 'соседа', 'соседей'])}, ${pool.length} ${plural(pool.length, ['слово', 'слова', 'слов'])}. Перейти к слову ${text}`);
+      }
+      entry.updateLabel = updateLabel; updateLabel();
+      row.append(word, element('span', '↗', 'degree-arrow'));
+      row.lastChild.setAttribute('aria-hidden', 'true');
+      row.addEventListener('click', () => selectWord(pool[entry.current], true));
+      if (pool.length > 1) degreeExamples.push(entry);
+    } else {
+      row.classList.add('is-empty'); row.append(element('span', 'Нет слов', 'degree-word'));
+    }
+    list.append(row);
+  }
+  // Only one row changes at a time; pausing under the pointer/focus keeps clicks stable.
+  window.setInterval(() => {
+    const panel = $('degree-panel');
+    if (!degreeExamples.length || document.hidden || panel.matches(':hover') || panel.contains(document.activeElement)) return;
+    const entry = degreeExamples[degreeCursor++ % degreeExamples.length];
+    const replace = () => {
+      if (!document.hidden && !panel.matches(':hover') && !panel.contains(document.activeElement)) {
+        const next = Math.floor(Math.random() * (entry.pool.length - 1));
+        entry.current = next >= entry.current ? next + 1 : next;
+        entry.updateLabel();
+      }
+      entry.word.classList.remove('is-updating');
+    };
+    if (reducedMotion.matches) replace();
+    else { entry.word.classList.add('is-updating'); window.setTimeout(replace, 180); }
+  }, 3500);
 }
 function summarizeComponents() {
   const summaries = new Map();
@@ -148,6 +205,7 @@ async function init() {
     adjacency = graph.nodes.map(() => []);
     graph.edges.forEach((edge, i) => { adjacency[edge.a].push(i); if (edge.a !== edge.b) adjacency[edge.b].push(i); });
     componentStats = summarizeComponents();
+    buildDegreeStatistics();
     visibleNodes = graph.nodes.map((_, index) => index); visibleEdges = graph.edges;
     $('visible-count').textContent = `${visibleNodes.length} слов · ${visibleEdges.length} связей`;
     const stats = [[graph.gameCount, 'лесенок'], [graph.nodes.length, 'слов'], [graph.edges.length, 'связей'], [graph.clueCount, 'подсказок']];

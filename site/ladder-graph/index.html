@@ -6,9 +6,9 @@
   <meta name="theme-color" content="#11130f" />
   <meta name="description" content="Карта слов и подсказок из архива лесенок Interoves." />
   <title>Лесенки — граф связей</title>
-  <link rel="stylesheet" href="./styles.css?v=4" />
+  <link rel="stylesheet" href="./styles.css?v=5" />
   <link rel="stylesheet" href="../project-nav.css?v=1" />
-  <script src="./app.js?v=5" defer></script>
+  <script src="./app.js?v=6" defer></script>
 </head>
 <body>
   <header>
@@ -23,6 +23,13 @@
     </section>
     <div class="stats" id="stats" aria-live="polite"></div>
     <section class="explorer" aria-label="Граф переходов">
+      <aside id="degree-panel" class="degree-panel" aria-labelledby="degree-title">
+        <p class="eyebrow">ОБЩИЙ ГРАФ</p>
+        <h2 id="degree-title">Соседи слова</h2>
+        <p class="degree-note">Сколько слов имеют k соседей.<br />Нажмите на пример, чтобы найти его.</p>
+        <div id="degree-list" class="degree-list"></div>
+        <p class="degree-note">Примеры меняются по очереди. Наведите курсор или выберите строку с клавиатуры, чтобы приостановить смену.</p>
+      </aside>
       <div class="map-panel">
         <div class="toolbar">
           <form id="search-form" role="search"><label class="sr-only" for="search">Найти слово</label><input id="search" type="search" placeholder="Найти слово…" list="word-options" autocomplete="off" /><datalist id="word-options"></datalist><button type="submit">Найти ↗</button></form>
@@ -31,7 +38,7 @@
         <p class="graph-key"><span aria-hidden="true">●</span> Больше связей — крупнее и ярче вершина: 3–4, 5–6, 7–8 и далее. Цвет — компонента связности.</p>
         <div class="stage"><canvas id="graph" tabindex="0" aria-label="Граф слов. Перетаскивайте карту; колесо меняет масштаб. Стрелки сдвигают карту, плюс и минус меняют масштаб. Слова и связи также доступны в панели справа."></canvas><div id="status" role="status">Загрузка графа…</div><div class="zoom"><button id="zoom-in" aria-label="Приблизить">+</button><button id="zoom-out" aria-label="Отдалить">−</button><button id="fit" aria-label="Показать граф целиком">⤢</button></div><span class="map-note">ПЕРЕТАСКИВАНИЕ · МАСШТАБ КОЛЕСОМ</span></div>
       </div>
-      <aside aria-label="Слово и подсказки">
+      <aside class="word-details" aria-label="Слово и подсказки">
         <p class="eyebrow">ВЫБРАННОЕ СЛОВО</p><h2 id="selected-word">—</h2><p id="word-meta" class="muted"></p>
         <section class="component-card" aria-labelledby="component-title" aria-live="polite">
           <h3><span id="component-dot" aria-hidden="true"></span><span id="component-title">Компонента связности</span></h3>
