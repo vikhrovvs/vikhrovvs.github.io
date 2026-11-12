@@ -1,5 +1,7 @@
 'use strict';
 
+import { schematicLayout } from './layout.js?v=1';
+
 const $ = (id) => document.getElementById(id);
 const canvas = $('graph'), ctx = canvas.getContext('2d');
 const normalize = (s) => s.trim().toLocaleLowerCase('ru').normalize('NFC').replace(/\s+/g, ' ');
@@ -8,6 +10,7 @@ let visibleNodes = [], visibleEdges = [], camera = { x: 0, y: 0, scale: 1 }, wid
 let drag = null, frame = 0;
 let rotatingExamples = [], exampleCursor = 0;
 let highlightedPath = null, pathPositions = new Map(), pathEdges = new Set(), pathCursor = 0;
+let originalPositions, schematic, layoutMode = 'schematic';
 const edgeKey = (a, b) => `${Math.min(a, b)}:${Math.max(a, b)}`;
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 // Golden-angle hues give every connected component its own bright color.
@@ -139,6 +142,20 @@ function showComponent(component) {
   $('component-leader').replaceChildren(document.createTextNode('Больше всего связей: '), button, document.createTextNode(` · ${leader.degree}`));
 }
 function requestDraw() { if (!frame) frame = requestAnimationFrame(() => { frame = 0; draw(); }); }
+function applyLayout(mode) {
+  layoutMode = mode;
+  const positions = mode === 'schematic' ? schematic.positions : originalPositions;
+  graph.nodes.forEach((node, i) => Object.assign(node, positions[i]));
+  for (const button of document.querySelectorAll('[data-layout]')) button.setAttribute('aria-pressed', String(button.dataset.layout === mode));
+  $('layout-note').textContent = mode === 'schematic'
+    ? 'Одиночные лесенки вытянуты в линии. Развилки и настоящие циклы сохранены. Большая компонента — без изменений.'
+    : 'Исходная силовая раскладка всех компонент. Переключите на схемы, чтобы распутать маленькие лесенки.';
+  focusComponent();
+}
+function focusComponent() {
+  const value = $('component-view').value;
+  fitNodes(value === 'all' ? visibleNodes : visibleNodes.filter((i) => value === 'small' ? schematic.components.has(graph.nodes[i].component) : graph.nodes[i].component === Number(value)));
+}
 function updatePathStep() {
   if (!highlightedPath) return;
   if (pathPositions.has(selected)) pathCursor = pathPositions.get(selected);
@@ -193,6 +210,18 @@ function screen(node) { return { x: (node.x - camera.x) * camera.scale + width /
 function draw() {
   const dpr = window.devicePixelRatio || 1;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, width, height);
+  if (layoutMode === 'schematic') for (const panel of schematic.panels) {
+    const p = screen(panel), w = panel.width * camera.scale, h = panel.height * camera.scale;
+    if (p.x > width || p.y > height || p.x + w < 0 || p.y + h < 0) continue;
+    ctx.globalAlpha = highlightedPath ? .25 : 1;
+    ctx.strokeStyle = componentColor(panel.id, .18); ctx.fillStyle = componentColor(panel.id, .025); ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.roundRect(p.x, p.y, w, h, 8); ctx.fill(); ctx.stroke();
+    if (camera.scale > .35) {
+      ctx.font = '500 10px Manrope, sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'; ctx.fillStyle = componentColor(panel.id, .8);
+      ctx.fillText(`№${panel.id + 1} · ${panel.games} ${plural(panel.games, ['лесенка', 'лесенки', 'лесенок'])} · ${panel.kind}`, p.x + 10, p.y + 10);
+    }
+  }
+  ctx.globalAlpha = 1;
   const near = new Set([selected, ...adjacency[selected].map((i) => { const e = graph.edges[i]; return e.a === selected ? e.b : e.a; })]);
   const onPath = (e) => pathEdges.has(edgeKey(e.a, e.b));
   const drawEdges = highlightedPath ? [...visibleEdges].sort((a, b) => Number(onPath(a)) - Number(onPath(b))) : visibleEdges;
@@ -201,7 +230,8 @@ function draw() {
     ctx.globalAlpha = highlightedPath && !pathEdge ? .15 : 1;
     const a = screen(graph.nodes[e.a]), b = screen(graph.nodes[e.b]), active = e.a === selected || e.b === selected;
     const multiplicity = e.clues.length, multiple = multiplicity > 1;
-    ctx.strokeStyle = pathEdge ? '#69ead7' : multiple ? (active ? '#ffd19b' : '#ffb56bc9') : active ? '#d8ff43b0' : '#88977b38';
+    const small = layoutMode === 'schematic' && schematic.components.has(graph.nodes[e.a].component);
+    ctx.strokeStyle = pathEdge ? '#69ead7' : multiple ? (active ? '#ffd19b' : '#ffb56bc9') : active ? '#d8ff43b0' : small ? componentColor(graph.nodes[e.a].component, .5) : '#88977b38';
     ctx.lineWidth = pathEdge ? 3 : multiple ? 2.6 + (multiplicity - 2) * .8 + (e === selectedEdge ? 1 : 0) : active ? 1.8 : .8;
     ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
     if (multiple) {
@@ -236,15 +266,16 @@ function draw() {
       ctx.lineWidth = active ? 2.5 : .6 + tier * .45;
       ctx.beginPath(); ctx.arc(p.x, p.y, radius + 2 + tier * .4, 0, Math.PI * 2); ctx.stroke();
     }
-    if ((!highlightedPath || pathNode || active) && (active || neighbor || camera.scale > .8 || hub)) labels.push({ i, n, p, active, neighbor, radius, tier });
+    const endpoint = layoutMode === 'schematic' && schematic.components.has(n.component) && n.degree === 1 && camera.scale > .18;
+    if ((!highlightedPath || pathNode || active) && (active || neighbor || camera.scale > .8 || hub || endpoint)) labels.push({ i, n, p, active, neighbor, radius, tier, endpoint });
   }
   ctx.globalAlpha = 1;
   labels.sort((a, b) => Number(b.active) - Number(a.active) || Number(b.neighbor) - Number(a.neighbor) || b.n.degree - a.n.degree);
-  for (const { i, n, p, active, neighbor, radius, tier } of labels) {
+  for (const { i, n, p, active, neighbor, radius, tier, endpoint } of labels) {
     const position = pathPositions.get(i);
     const label = position === undefined ? n.label : `${position + 1} · ${n.label}`;
     ctx.font = `${active ? 700 : tier >= 3 ? 600 : 500} ${active ? 15 : 11 + Math.min(3, tier) * .5}px Manrope, sans-serif`;
-    const w = ctx.measureText(label).width + 10, x = p.x - w / 2, y = p.y + radius + 6;
+    const w = ctx.measureText(label).width + 10, x = p.x - w / 2, y = endpoint && !active ? p.y - radius - 24 : p.y + radius + 6;
     const box = { x, y, w, h: 20 };
     if (!active && occupied.some((r) => x < r.x + r.w && x + w > r.x && y < r.y + r.h && y + 20 > r.y)) continue;
     occupied.push(box); ctx.fillStyle = active ? '#d8ff43' : '#141a12ed';
@@ -258,6 +289,12 @@ function fit() {
 function fitNodes(indices) {
   if (!indices.length || width < 130 || height < 110) return;
   const points = indices.map((i) => graph.nodes[i]);
+  if (layoutMode === 'schematic') {
+    const included = new Set(indices);
+    for (const panel of schematic.panels) if (panel.indices.every((i) => included.has(i))) {
+      points.push(panel, { x: panel.x + panel.width, y: panel.y + panel.height });
+    }
+  }
   const minX = Math.min(...points.map((n) => n.x)), maxX = Math.max(...points.map((n) => n.x));
   const minY = Math.min(...points.map((n) => n.y)), maxY = Math.max(...points.map((n) => n.y));
   camera = { x: (minX + maxX) / 2, y: (minY + maxY) / 2, scale: Math.min(2, (width - 120) / Math.max(100, maxX - minX), (height - 100) / Math.max(100, maxY - minY)) };
@@ -316,12 +353,26 @@ async function init() {
     const response = await fetch('./data/graph.json');
     if (!response.ok) throw new Error(`HTTP ${response.status}: graph`);
     graph = await response.json();
+    originalPositions = graph.nodes.map(({ x, y }) => ({ x, y }));
+    schematic = schematicLayout(graph);
     adjacency = graph.nodes.map(() => []);
     graph.edges.forEach((edge, i) => { adjacency[edge.a].push(i); if (edge.a !== edge.b) adjacency[edge.b].push(i); });
     componentStats = summarizeComponents();
     buildDegreeStatistics();
     buildMultiplicityStatistics();
     visibleNodes = graph.nodes.map((_, index) => index); visibleEdges = [...graph.edges].sort((a, b) => a.clues.length - b.clues.length);
+    for (const [id, summary] of [...componentStats].sort(([a], [b]) => a - b)) {
+      const option = element('option', `№${id + 1} · ${summary.games.size} ${plural(summary.games.size, ['лесенка', 'лесенки', 'лесенок'])} · ${summary.words} ${plural(summary.words, ['слово', 'слова', 'слов'])}`);
+      option.value = id; $('component-view').append(option);
+    }
+    $('component-view').addEventListener('change', focusComponent);
+    $('expand-map').addEventListener('click', () => {
+      const expanded = document.querySelector('.explorer').classList.toggle('map-expanded');
+      $('expand-map').setAttribute('aria-pressed', String(expanded));
+      $('expand-map').textContent = expanded ? 'Вернуть панели ↙' : 'Развернуть карту ↗';
+    });
+    document.querySelectorAll('[data-layout]').forEach((button) => button.addEventListener('click', () => applyLayout(button.dataset.layout)));
+    applyLayout('schematic');
     $('visible-count').textContent = `${visibleNodes.length} слов · ${visibleEdges.length} связей`;
     const stats = [[graph.gameCount, 'лесенок'], [graph.nodes.length, 'слов'], [graph.edges.length, 'связей'], [graph.clueCount, 'подсказок']];
     $('stats').replaceChildren(...stats.map(([n, text]) => { const s = element('span'); s.append(element('strong', n.toLocaleString('ru')), document.createTextNode(text)); return s; }));
@@ -332,7 +383,14 @@ async function init() {
     const initial = normalize(new URLSearchParams(location.search).get('word') || '');
     selected = initial ? graph.nodes.findIndex((n) => n.id === initial) : -1;
     if (selected < 0) selected = graph.nodes.reduce((best, n, i) => n.degree > graph.nodes[best].degree ? i : best, 0);
-    new ResizeObserver(() => { const rect = canvas.getBoundingClientRect(); width = rect.width; height = rect.height; canvas.width = Math.round(width * (devicePixelRatio || 1)); canvas.height = Math.round(height * (devicePixelRatio || 1)); fitNodes(highlightedPath?.nodes || visibleNodes); if (initial && !highlightedPath) focusWord(selected); }).observe(canvas);
+    let initialCameraPending = Boolean(initial);
+    new ResizeObserver(() => {
+      const rect = canvas.getBoundingClientRect(); width = rect.width; height = rect.height;
+      canvas.width = Math.round(width * (devicePixelRatio || 1)); canvas.height = Math.round(height * (devicePixelRatio || 1));
+      if (highlightedPath) fitNodes(highlightedPath.nodes); else focusComponent();
+      if (initialCameraPending && !highlightedPath) focusWord(selected);
+      initialCameraPending = false;
+    }).observe(canvas);
     selectWord(selected);
     if (graph.longPaths?.length) {
       $('show-longest').disabled = false; $('show-component-path').disabled = false;
