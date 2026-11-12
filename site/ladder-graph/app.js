@@ -7,6 +7,7 @@ let graph, archive, adjacency, selected = 0, mode = 'all', game = null;
 let visibleNodes = [], visibleEdges = [], camera = { x: 0, y: 0, scale: 1 }, width = 1, height = 1;
 let drag = null, frame = 0;
 // Golden-angle hues give every connected component its own bright color.
+const prominenceTier = (degree) => Math.max(0, Math.floor((degree - 1) / 2));
 const componentColor = (component, alpha = 1) => `hsla(${(component * 137.508 + 80) % 360}, 82%, 68%, ${alpha})`;
 function element(tag, text, className) {
   const el = document.createElement(tag);
@@ -37,21 +38,24 @@ function draw() {
   for (const i of ordered) {
     const n = graph.nodes[i], p = screen(n), active = i === selected, neighbor = near.has(i);
     if (p.x < -100 || p.x > width + 100 || p.y < -40 || p.y > height + 40) continue;
-    const hub = n.degree > 2;
-    const radius = (hub ? Math.min(10, 5.5 + Math.sqrt(n.degree - 2)) : 2.8) + (active ? 2 : 0);
-    if (active) { ctx.shadowColor = '#d8ff43'; ctx.shadowBlur = 15; }
-    ctx.fillStyle = componentColor(n.component, hub || active || neighbor ? 1 : .48);
+    const tier = prominenceTier(n.degree), hub = tier > 0;
+    const radius = (hub ? 3.4 + tier * 1.65 : 2.8) + (active ? 2 : 0);
+    if (hub || active) {
+      ctx.shadowColor = active ? '#d8ff43' : componentColor(n.component, .65);
+      ctx.shadowBlur = active ? 16 : tier * 2;
+    }
+    ctx.fillStyle = componentColor(n.component, active || neighbor ? 1 : hub ? Math.min(1, .55 + tier * .12) : .4);
     ctx.beginPath(); ctx.arc(p.x, p.y, radius, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0;
     if (hub || active) {
-      ctx.strokeStyle = active ? '#d8ff43' : componentColor(n.component, .45);
-      ctx.lineWidth = active ? 2 : 1;
-      ctx.beginPath(); ctx.arc(p.x, p.y, radius + 3, 0, Math.PI * 2); ctx.stroke();
+      ctx.strokeStyle = active ? '#d8ff43' : componentColor(n.component, Math.min(.85, .25 + tier * .13));
+      ctx.lineWidth = active ? 2.5 : .6 + tier * .45;
+      ctx.beginPath(); ctx.arc(p.x, p.y, radius + 2 + tier * .4, 0, Math.PI * 2); ctx.stroke();
     }
-    if (active || neighbor || camera.scale > .8 || hub) labels.push({ n, p, active, neighbor, radius });
+    if (active || neighbor || camera.scale > .8 || hub) labels.push({ n, p, active, neighbor, radius, tier });
   }
   labels.sort((a, b) => Number(b.active) - Number(a.active) || Number(b.neighbor) - Number(a.neighbor) || b.n.degree - a.n.degree);
-  for (const { n, p, active, neighbor, radius } of labels) {
-    ctx.font = `${active ? 700 : 500} ${active ? 14 : 11}px Manrope, sans-serif`;
+  for (const { n, p, active, neighbor, radius, tier } of labels) {
+    ctx.font = `${active ? 700 : tier >= 3 ? 600 : 500} ${active ? 15 : 11 + Math.min(3, tier) * .5}px Manrope, sans-serif`;
     const w = ctx.measureText(n.label).width + 10, x = p.x - w / 2, y = p.y + radius + 6;
     const box = { x, y, w, h: 20 };
     if (!active && occupied.some((r) => x < r.x + r.w && x + w > r.x && y < r.y + r.h && y + 20 > r.y)) continue;

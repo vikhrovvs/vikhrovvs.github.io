@@ -26,71 +26,9 @@
         </section>
 
         <section class="projects" aria-label="Проекты">
-          <a class="project-card" href="./anagrams/">
-            <div class="card-topline">
-              <span>01 / язык</span>
-              <span class="project-status"><i aria-hidden="true"></i> работает</span>
-            </div>
-
-            <div class="project-visual" aria-hidden="true">
-              <svg viewBox="0 0 640 280" role="presentation">
-                <g class="edges">
-                  <path d="M320 140 200 82M320 140 454 74M320 140 482 178M320 140 184 200M200 82 112 130M454 74 548 112M482 178 552 224M184 200 98 234" />
-                </g>
-                <g class="node satellite"><circle cx="200" cy="82" r="32" /><text x="200" y="86">рот</text></g>
-                <g class="node satellite"><circle cx="454" cy="74" r="28" /><text x="454" y="78">так</text></g>
-                <g class="node satellite"><circle cx="482" cy="178" r="24" /><text x="482" y="182">тон</text></g>
-                <g class="node satellite"><circle cx="184" cy="200" r="27" /><text x="184" y="204">это</text></g>
-                <g class="node faint"><circle cx="112" cy="130" r="18" /><circle cx="548" cy="112" r="15" /><circle cx="552" cy="224" r="20" /><circle cx="98" cy="234" r="14" /></g>
-                <g class="node core">
-                  <circle cx="320" cy="140" r="54" />
-                  <text class="main-word" x="320" y="132">кто</text>
-                  <text class="sub-word" x="320" y="151">кот · ток</text>
-                </g>
-              </svg>
-            </div>
-
-            <div class="card-copy">
-              <div>
-                <p>Интерактивный эксперимент</p>
-                <h2>Словограф</h2>
-                <p class="description">Карта русских анаграмм и слов, которые отличаются одной буквой.</p>
-              </div>
-              <span class="open-project">Открыть граф <span aria-hidden="true">↗</span></span>
-            </div>
-          </a>
-
-          <a class="project-card" href="./word-route/">
-            <div class="card-topline">
-              <span>02 / игра</span>
-              <span class="project-status"><i aria-hidden="true"></i> каждый день</span>
-            </div>
-
-            <div class="project-visual route-visual" aria-hidden="true">
-              <svg viewBox="0 0 640 280" role="presentation">
-                <path class="route-edge" d="M100 164 C166 86 224 204 290 126 S414 60 540 120" />
-                <g class="route-step done"><circle cx="100" cy="164" r="36" /><text x="100" y="169">кот</text></g>
-                <g class="route-step done"><circle cx="225" cy="150" r="27" /><text x="225" y="154">кит</text></g>
-                <g class="route-step active"><circle cx="350" cy="103" r="42" /><text x="350" y="108">тик</text></g>
-                <g class="route-step target"><circle cx="540" cy="120" r="34" /><text x="540" y="125">мир</text></g>
-                <g class="route-option"><circle cx="338" cy="210" r="23" /><text x="338" y="214">тип</text></g>
-                <path class="option-edge" d="M350 145 340 187" />
-              </svg>
-            </div>
-
-            <div class="card-copy">
-              <div>
-                <p>Ежедневная словесная игра</p>
-                <h2>Маршрут</h2>
-                <p class="description">Доберитесь от одного слова до другого, меняя или добавляя по одной букве.</p>
-              </div>
-              <span class="open-project">Играть <span aria-hidden="true">↗</span></span>
-            </div>
-          </a>
-
           <a class="project-card" href="./word-grid/">
             <div class="card-topline">
-              <span>03 / алгоритм</span>
+              <span>01 / алгоритм</span>
               <span class="project-status"><i aria-hidden="true"></i> Python в браузере</span>
             </div>
 
@@ -127,14 +65,15 @@
             <div class="card-copy">
               <div>
                 <p>Точный поиск раскладки</p>
-                <h2>Квадрат</h2>
+                <h2>Составитель салатиков</h2>
                 <p class="description">Заполните поле 4 × 4 так, чтобы все заданные слова читались по соседним клеткам.</p>
               </div>
               <span class="open-project">Найти раскладку <span aria-hidden="true">↗</span></span>
             </div>
           </a>
+
           <a class="project-card" href="./ladder-graph/">
-            <div class="card-topline"><span>04 / связи</span><span class="project-status"><i aria-hidden="true"></i> архив Interoves</span></div>
+            <div class="card-topline"><span>02 / связи</span><span class="project-status"><i aria-hidden="true"></i> архив Interoves</span></div>
             <div class="project-visual" aria-hidden="true">
               <svg viewBox="0 0 640 280" role="presentation">
                 <g class="edges"><path d="M265 90 425 165 535 90 280 215 120 140" /></g>
@@ -142,7 +81,69 @@
                 <g class="node core"><circle cx="265" cy="90" r="48"/><text class="main-word" x="265" y="96">солнце</text></g>
               </svg>
             </div>
-            <div class="card-copy"><div><p>Карта словесных ассоциаций</p><h2>Лесенки</h2><p class="description">Слова и переходы из архива лесенок. Каждое ребро хранит исходную подсказку.</p></div><span class="open-project">Исследовать связи <span aria-hidden="true">↗</span></span></div>
+            <div class="card-copy"><div><p>Карта словесных ассоциаций</p><h2>Граф лесенок</h2><p class="description">Слова и переходы из архива лесенок. Каждое ребро хранит исходную подсказку.</p></div><span class="open-project">Исследовать связи <span aria-hidden="true">↗</span></span></div>
+          </a>
+
+          <a class="project-card" href="./anagrams/">
+            <div class="card-topline">
+              <span>03 / язык</span>
+              <span class="project-status"><i aria-hidden="true"></i> работает</span>
+            </div>
+
+            <div class="project-visual" aria-hidden="true">
+              <svg viewBox="0 0 640 280" role="presentation">
+                <g class="edges">
+                  <path d="M320 140 200 82M320 140 454 74M320 140 482 178M320 140 184 200M200 82 112 130M454 74 548 112M482 178 552 224M184 200 98 234" />
+                </g>
+                <g class="node satellite"><circle cx="200" cy="82" r="32" /><text x="200" y="86">рот</text></g>
+                <g class="node satellite"><circle cx="454" cy="74" r="28" /><text x="454" y="78">так</text></g>
+                <g class="node satellite"><circle cx="482" cy="178" r="24" /><text x="482" y="182">тон</text></g>
+                <g class="node satellite"><circle cx="184" cy="200" r="27" /><text x="184" y="204">это</text></g>
+                <g class="node faint"><circle cx="112" cy="130" r="18" /><circle cx="548" cy="112" r="15" /><circle cx="552" cy="224" r="20" /><circle cx="98" cy="234" r="14" /></g>
+                <g class="node core">
+                  <circle cx="320" cy="140" r="54" />
+                  <text class="main-word" x="320" y="132">кто</text>
+                  <text class="sub-word" x="320" y="151">кот · ток</text>
+                </g>
+              </svg>
+            </div>
+
+            <div class="card-copy">
+              <div>
+                <p>Интерактивный эксперимент</p>
+                <h2>Словограф</h2>
+                <p class="description">Карта русских анаграмм и слов, которые отличаются одной буквой.</p>
+              </div>
+              <span class="open-project">Открыть граф <span aria-hidden="true">↗</span></span>
+            </div>
+          </a>
+
+          <a class="project-card" href="./word-route/">
+            <div class="card-topline">
+              <span>04 / игра</span>
+              <span class="project-status"><i aria-hidden="true"></i> каждый день</span>
+            </div>
+
+            <div class="project-visual route-visual" aria-hidden="true">
+              <svg viewBox="0 0 640 280" role="presentation">
+                <path class="route-edge" d="M100 164 C166 86 224 204 290 126 S414 60 540 120" />
+                <g class="route-step done"><circle cx="100" cy="164" r="36" /><text x="100" y="169">кот</text></g>
+                <g class="route-step done"><circle cx="225" cy="150" r="27" /><text x="225" y="154">кит</text></g>
+                <g class="route-step active"><circle cx="350" cy="103" r="42" /><text x="350" y="108">тик</text></g>
+                <g class="route-step target"><circle cx="540" cy="120" r="34" /><text x="540" y="125">мир</text></g>
+                <g class="route-option"><circle cx="338" cy="210" r="23" /><text x="338" y="214">тип</text></g>
+                <path class="option-edge" d="M350 145 340 187" />
+              </svg>
+            </div>
+
+            <div class="card-copy">
+              <div>
+                <p>Ежедневная словесная игра</p>
+                <h2>Маршрут</h2>
+                <p class="description">Доберитесь от одного слова до другого, меняя или добавляя по одной букве.</p>
+              </div>
+              <span class="open-project">Играть <span aria-hidden="true">↗</span></span>
+            </div>
           </a>
         </section>
       </main>

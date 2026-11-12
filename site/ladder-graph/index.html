@@ -7,7 +7,7 @@
   <meta name="description" content="Карта слов и подсказок из архива лесенок Interoves." />
   <title>Лесенки — граф связей</title>
   <link rel="stylesheet" href="./styles.css?v=2" />
-  <script src="./app.js?v=2" defer></script>
+  <script src="./app.js?v=3" defer></script>
 </head>
 <body>
   <header>
@@ -28,7 +28,7 @@
           <label class="game-filter">Лесенка <select id="game"><option value="">Все</option></select></label>
         </div>
         <div class="viewbar"><div class="view-tabs" aria-label="Область графа"><button id="overview" class="active" type="button" aria-pressed="true">Весь граф</button><button id="neighborhood" type="button" aria-pressed="false">Окрестность</button></div><span id="visible-count"></span></div>
-        <p class="graph-key"><span aria-hidden="true">●</span> Крупные яркие вершины — больше двух связей. Цвет — компонента связности.</p>
+        <p class="graph-key"><span aria-hidden="true">●</span> Больше связей — крупнее и ярче вершина: 3–4, 5–6, 7–8 и далее. Цвет — компонента связности.</p>
         <div class="stage"><canvas id="graph" tabindex="0" aria-label="Граф слов. Перетаскивайте карту; колесо меняет масштаб. Стрелки сдвигают карту, плюс и минус меняют масштаб. Слова и связи также доступны в панели справа."></canvas><div id="status" role="status">Загрузка графа…</div><div class="zoom"><button id="zoom-in" aria-label="Приблизить">+</button><button id="zoom-out" aria-label="Отдалить">−</button><button id="fit" aria-label="Показать граф целиком">⤢</button></div><span class="map-note">ПЕРЕТАСКИВАНИЕ · МАСШТАБ КОЛЕСОМ</span></div>
       </div>
       <aside aria-label="Слово и подсказки"><p class="eyebrow">ВЫБРАННОЕ СЛОВО</p><h2 id="selected-word">—</h2><p id="word-meta" class="muted"></p><div id="neighbors"></div></aside>
