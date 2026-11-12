@@ -4,9 +4,10 @@ coverage/
 dist/
 .cache/
 
-# Local source data; the generated graph in site/ stays tracked
+# Local source data and the ladder graph generated during deployment
 data/*.csv
 data/ladder-graph/
+site/ladder-graph/data/graph.json
 
 # Secrets and local configuration
 .env

@@ -79,5 +79,6 @@ components.forEach((component, componentId) => {
   cursorX += width; rowHeight = Math.max(rowHeight, height);
 });
 const graph = { schemaVersion: 1, source: archive.source, collectedAt: archive.collectedAt, gameCount: archive.games.length, clueCount: archive.games.reduce((n, g) => n + g.transitions.length, 0), componentCount: components.length, nodes, edges };
+fs.mkdirSync(folder, { recursive: true });
 fs.writeFileSync(path.join(folder, 'graph.json'), JSON.stringify(graph));
 console.log(`${graph.gameCount} games, ${graph.clueCount} clues, ${nodes.length} words, ${edges.length} undirected edges, ${components.length} components`);
