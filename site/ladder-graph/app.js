@@ -3,7 +3,7 @@
 const $ = (id) => document.getElementById(id);
 const canvas = $('graph'), ctx = canvas.getContext('2d');
 const normalize = (s) => s.trim().toLocaleLowerCase('ru').normalize('NFC').replace(/\s+/g, ' ');
-let graph, archive, adjacency, componentStats, selected = 0, mode = 'all', game = null;
+let graph, archive, adjacency, componentStats, selected = 0;
 let visibleNodes = [], visibleEdges = [], camera = { x: 0, y: 0, scale: 1 }, width = 1, height = 1;
 let drag = null, frame = 0;
 // Golden-angle hues give every connected component its own bright color.
@@ -20,7 +20,6 @@ function sourceLink(number) {
   a.href = `https://interoves.com/ladder/${number}/`; a.target = '_blank'; a.rel = 'noreferrer';
   return a;
 }
-function filteredClues(edge) { return game === null ? edge.clues : edge.clues.filter((c) => c.game === game); }
 function summarizeComponents() {
   const summaries = new Map();
   graph.nodes.forEach((node, index) => {
@@ -49,7 +48,6 @@ function showComponent(component) {
   $('component-scope').textContent = `Во всём архиве · ${(summary.words / graph.nodes.length * 100).toLocaleString('ru', { maximumFractionDigits: 1 })}% всех слов`;
   const button = element('button', leader.label);
   button.type = 'button'; button.addEventListener('click', () => {
-    if (game !== null && !leader.games.includes(game)) { game = null; $('game').value = ''; }
     selectWord(summary.leader, true);
   });
   $('component-leader').replaceChildren(document.createTextNode('Больше всего связей: '), button, document.createTextNode(` · ${leader.degree}`));
@@ -105,54 +103,37 @@ function fit() {
   camera = { x: (minX + maxX) / 2, y: (minY + maxY) / 2, scale: Math.min(2, (width - 120) / Math.max(100, maxX - minX), (height - 100) / Math.max(100, maxY - minY)) };
   requestDraw();
 }
-function updateView(refit = true) {
-  const eligible = graph.edges.filter((e) => filteredClues(e).length);
-  let included = new Set(eligible.flatMap((e) => [e.a, e.b]));
-  if (mode === 'near') {
-    const local = new Set([selected]); let frontier = [selected];
-    for (let depth = 0; depth < 2; depth++) {
-      const next = [];
-      for (const i of frontier) for (const ei of adjacency[i]) {
-        const edge = graph.edges[ei]; if (!filteredClues(edge).length) continue;
-        const v = edge.a === i ? edge.b : edge.a;
-        if (!local.has(v)) { local.add(v); next.push(v); }
-      }
-      frontier = next;
-    }
-    included = new Set([...local].filter((i) => included.has(i)));
-  }
-  visibleNodes = [...included]; visibleEdges = eligible.filter((e) => included.has(e.a) && included.has(e.b));
-  $('visible-count').textContent = `${visibleNodes.length} слов · ${visibleEdges.length} связей`;
-  $('status').hidden = visibleNodes.length > 0;
-  if (!visibleNodes.length) $('status').textContent = 'В этой лесенке нет связей с выбранным словом. Выберите другое слово или весь граф.';
-  for (const [id, active] of [['overview', mode === 'all'], ['neighborhood', mode === 'near']]) { $(id).classList.toggle('active', active); $(id).setAttribute('aria-pressed', active); }
-  if (refit) fit(); else requestDraw();
+function focusWord(index) {
+  const node = graph.nodes[index];
+  camera.x = node.x; camera.y = node.y;
+  camera.scale = Math.max(camera.scale, .9);
+  requestDraw();
 }
-function selectWord(index, refit = false) {
+function selectWord(index, focus = false) {
   selected = index; const node = graph.nodes[index];
   $('selected-word').textContent = node.label;
   $('word-meta').textContent = `${node.degree} соседей · в ${node.games.length} лесенках`;
   showComponent(node.component);
   const list = $('neighbors'); list.replaceChildren();
-  const edges = adjacency[index].map((i) => graph.edges[i]).filter((e) => filteredClues(e).length);
+  const edges = adjacency[index].map((i) => graph.edges[i]);
   edges.sort((a, b) => graph.nodes[a.a === index ? a.b : a.a].label.localeCompare(graph.nodes[b.a === index ? b.b : b.a].label, 'ru'));
   for (const edge of edges) {
     const other = edge.a === index ? edge.b : edge.a;
     const card = element('div', undefined, 'neighbor'), button = element('button', `↔ ${graph.nodes[other].label}`);
-    button.type = 'button'; button.addEventListener('click', () => selectWord(other, mode === 'near')); card.append(button);
-    for (const clue of filteredClues(edge)) card.append(element('p', clue.text), sourceLink(clue.game));
+    button.type = 'button'; button.addEventListener('click', () => selectWord(other, true)); card.append(button);
+    for (const clue of edge.clues) card.append(element('p', clue.text), sourceLink(clue.game));
     list.append(card);
   }
-  if (!edges.length) list.append(element('p', 'У слова нет переходов в выбранной лесенке.', 'muted'));
+  if (!edges.length) list.append(element('p', 'У слова нет сохранённых переходов.', 'muted'));
   const url = new URL(location.href); url.searchParams.set('word', node.id); history.replaceState(null, '', url);
-  updateView(refit || mode === 'near');
+  $('status').hidden = true;
+  if (focus) focusWord(index); else requestDraw();
 }
 function search() {
   const query = normalize($('search').value);
   const exact = graph.nodes.findIndex((n) => n.id === query);
   if (exact < 0) { $('status').hidden = false; $('status').textContent = `Слово «${query}» не найдено в архиве.`; return; }
-  if (game !== null && !graph.nodes[exact].games.includes(game)) { game = null; $('game').value = ''; }
-  mode = 'near'; selectWord(exact, true);
+  selectWord(exact, true);
 }
 function zoom(factor, x = width / 2, y = height / 2) {
   const wx = camera.x + (x - width / 2) / camera.scale, wy = camera.y + (y - height / 2) / camera.scale;
@@ -167,23 +148,20 @@ async function init() {
     adjacency = graph.nodes.map(() => []);
     graph.edges.forEach((edge, i) => { adjacency[edge.a].push(i); if (edge.a !== edge.b) adjacency[edge.b].push(i); });
     componentStats = summarizeComponents();
+    visibleNodes = graph.nodes.map((_, index) => index); visibleEdges = graph.edges;
+    $('visible-count').textContent = `${visibleNodes.length} слов · ${visibleEdges.length} связей`;
     const stats = [[graph.gameCount, 'лесенок'], [graph.nodes.length, 'слов'], [graph.edges.length, 'связей'], [graph.clueCount, 'подсказок']];
     $('stats').replaceChildren(...stats.map(([n, text]) => { const s = element('span'); s.append(element('strong', n.toLocaleString('ru')), document.createTextNode(text)); return s; }));
     const numbers = archive.games.map((g) => g.number).sort((a, b) => a - b);
     const date = new Date(graph.collectedAt).toLocaleDateString('ru', { timeZone: 'Europe/Moscow' });
     $('coverage').textContent = `Снимок ${date} · №${numbers[0]}–${numbers.at(-1)} · ${graph.componentCount} компонент связности`;
     $('word-options').replaceChildren(...graph.nodes.map((n) => { const o = element('option'); o.value = n.label; return o; }));
-    for (const g of [...archive.games].reverse()) { const option = element('option', `№${g.number} · ${g.calendarLabel}`); option.value = g.number; $('game').append(option); }
     const initial = normalize(new URLSearchParams(location.search).get('word') || '');
     selected = initial ? graph.nodes.findIndex((n) => n.id === initial) : -1;
     if (selected < 0) selected = graph.nodes.reduce((best, n, i) => n.degree > graph.nodes[best].degree ? i : best, 0);
-    else mode = 'near';
-    new ResizeObserver(() => { const rect = canvas.getBoundingClientRect(); width = rect.width; height = rect.height; canvas.width = Math.round(width * (devicePixelRatio || 1)); canvas.height = Math.round(height * (devicePixelRatio || 1)); fit(); }).observe(canvas);
+    new ResizeObserver(() => { const rect = canvas.getBoundingClientRect(); width = rect.width; height = rect.height; canvas.width = Math.round(width * (devicePixelRatio || 1)); canvas.height = Math.round(height * (devicePixelRatio || 1)); fit(); if (initial) focusWord(selected); }).observe(canvas);
     selectWord(selected);
     $('search-form').addEventListener('submit', (e) => { e.preventDefault(); search(); });
-    $('overview').addEventListener('click', () => { mode = 'all'; updateView(); });
-    $('neighborhood').addEventListener('click', () => { mode = 'near'; updateView(); });
-    $('game').addEventListener('change', () => { game = $('game').value ? Number($('game').value) : null; if (game !== null && !graph.nodes[selected].games.includes(game)) selected = graph.nodes.findIndex((n) => n.games.includes(game)); mode = 'all'; selectWord(selected, true); });
     $('fit').addEventListener('click', fit); $('zoom-in').addEventListener('click', () => zoom(1.3)); $('zoom-out').addEventListener('click', () => zoom(1 / 1.3));
     canvas.addEventListener('wheel', (e) => { e.preventDefault(); const rect = canvas.getBoundingClientRect(); zoom(Math.exp(-e.deltaY * .001), e.clientX - rect.left, e.clientY - rect.top); }, { passive: false });
     canvas.addEventListener('pointerdown', (e) => { if (e.button !== 0) return; drag = { x: e.clientX, y: e.clientY, cameraX: camera.x, cameraY: camera.y, moved: false }; canvas.setPointerCapture(e.pointerId); });
