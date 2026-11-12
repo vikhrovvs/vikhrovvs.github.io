@@ -4,7 +4,9 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const folder = path.join(root, 'site/ladder-graph/data');
-const archive = JSON.parse(fs.readFileSync(path.join(folder, 'archive.json'), 'utf8'));
+const archivePath = path.join(root, 'data/ladder-graph/archive.json');
+if (!fs.existsSync(archivePath)) throw new Error('Local source archive is missing: data/ladder-graph/archive.json (not stored in Git)');
+const archive = JSON.parse(fs.readFileSync(archivePath, 'utf8'));
 if (archive.failures.length || archive.games.length !== archive.discovered.length) {
   throw new Error('Archive is incomplete; resolve export failures before rebuilding');
 }

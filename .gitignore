@@ -6,6 +6,7 @@ dist/
 
 # Local source data; the generated graph in site/ stays tracked
 data/*.csv
+data/ladder-graph/
 
 # Secrets and local configuration
 .env

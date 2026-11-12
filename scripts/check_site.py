@@ -108,7 +108,6 @@ def main() -> int:
         SITE / "ladder-graph" / "index.html",
         SITE / "ladder-graph" / "app.js",
         SITE / "ladder-graph" / "styles.css",
-        SITE / "ladder-graph" / "data" / "archive.json",
         SITE / "ladder-graph" / "data" / "graph.json",
         ROOT / ".github" / "workflows" / "pages.yml",
     ]
@@ -128,20 +127,25 @@ def main() -> int:
 
 def check_ladder_graph() -> None:
     folder = SITE / "ladder-graph" / "data"
-    archive = json.loads((folder / "archive.json").read_text(encoding="utf-8"))
+    assert not (folder / "archive.json").exists(), "Raw ladder archive must not be published in site/"
+    archive_path = ROOT / "data" / "ladder-graph" / "archive.json"
     graph = json.loads((folder / "graph.json").read_text(encoding="utf-8"))
-    games = archive["games"]
-    assert not archive["failures"], "Ladder export has failures"
-    assert len({g["number"] for g in games}) == len(games) == len(archive["discovered"])
-    assert {g["number"] for g in games} == set(archive["discovered"])
-    original_clues = {(g["number"], t["index"]): t for g in games for t in g["transitions"]}
-    for game in games:
-        assert len(game["transitions"]) == game["expectedWords"] - 1
-        assert len({t["index"] for t in game["transitions"]}) == len(game["transitions"])
-        assert all(t["from"] and t["to"] and t["text"] for t in game["transitions"])
+    original_clues = None
+    if archive_path.exists():
+        archive = json.loads(archive_path.read_text(encoding="utf-8"))
+        games = archive["games"]
+        assert not archive["failures"], "Ladder export has failures"
+        assert len({g["number"] for g in games}) == len(games) == len(archive["discovered"])
+        assert {g["number"] for g in games} == set(archive["discovered"])
+        original_clues = {(g["number"], t["index"]): t for g in games for t in g["transitions"]}
+        for game in games:
+            assert len(game["transitions"]) == game["expectedWords"] - 1
+            assert len({t["index"] for t in game["transitions"]}) == len(game["transitions"])
+            assert all(t["from"] and t["to"] and t["text"] for t in game["transitions"])
+        assert graph["gameCount"] == len(games)
     nodes = graph["nodes"]
     assert len({n["id"] for n in nodes}) == len(nodes)
-    seen_pairs, seen_clues = set(), set()
+    seen_pairs, seen_clues, game_numbers = set(), set(), set()
     for edge in graph["edges"]:
         a, b = edge["a"], edge["b"]
         assert 0 <= a <= b < len(nodes) and (a, b) not in seen_pairs
@@ -149,13 +153,18 @@ def check_ladder_graph() -> None:
         assert edge["clues"]
         for clue in edge["clues"]:
             key = clue["game"], clue["index"]
-            assert key in original_clues and key not in seen_clues
-            assert clue["text"] == original_clues[key]["text"]
+            assert key not in seen_clues and clue["text"]
+            if original_clues is not None:
+                assert key in original_clues
+                assert clue["text"] == original_clues[key]["text"]
             assert {nodes[a]["id"], nodes[b]["id"]} == {clue["from"], clue["to"]}
             seen_clues.add(key)
-    assert seen_clues == original_clues.keys()
-    assert graph["gameCount"] == len(games) and graph["clueCount"] == len(seen_clues)
-    print(f"OK: ladder archive has {len(games)} games, {len(seen_clues)} clues, {len(nodes)} words, {len(seen_pairs)} edges")
+            game_numbers.add(clue["game"])
+    if original_clues is not None:
+        assert seen_clues == original_clues.keys()
+    assert graph["gameCount"] == len(game_numbers) and graph["clueCount"] == len(seen_clues)
+    source_check = "local archive verified" if original_clues is not None else "local archive unavailable; graph checked independently"
+    print(f"OK: ladder graph has {len(game_numbers)} games, {len(seen_clues)} clues, {len(nodes)} words, {len(seen_pairs)} edges ({source_check})")
 
 
 if __name__ == "__main__":

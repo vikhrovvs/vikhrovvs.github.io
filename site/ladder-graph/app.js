@@ -3,7 +3,7 @@
 const $ = (id) => document.getElementById(id);
 const canvas = $('graph'), ctx = canvas.getContext('2d');
 const normalize = (s) => s.trim().toLocaleLowerCase('ru').normalize('NFC').replace(/\s+/g, ' ');
-let graph, archive, adjacency, componentStats, selected = 0, selectedEdge = null;
+let graph, adjacency, componentStats, selected = 0, selectedEdge = null;
 let visibleNodes = [], visibleEdges = [], camera = { x: 0, y: 0, scale: 1 }, width = 1, height = 1;
 let drag = null, frame = 0;
 let rotatingExamples = [], exampleCursor = 0;
@@ -248,9 +248,9 @@ function zoom(factor, x = width / 2, y = height / 2) {
 }
 async function init() {
   try {
-    [graph, archive] = await Promise.all(['graph', 'archive'].map(async (file) => {
-      const response = await fetch(`./data/${file}.json`); if (!response.ok) throw new Error(`HTTP ${response.status}: ${file}`); return response.json();
-    }));
+    const response = await fetch('./data/graph.json');
+    if (!response.ok) throw new Error(`HTTP ${response.status}: graph`);
+    graph = await response.json();
     adjacency = graph.nodes.map(() => []);
     graph.edges.forEach((edge, i) => { adjacency[edge.a].push(i); if (edge.a !== edge.b) adjacency[edge.b].push(i); });
     componentStats = summarizeComponents();
@@ -260,7 +260,7 @@ async function init() {
     $('visible-count').textContent = `${visibleNodes.length} слов · ${visibleEdges.length} связей`;
     const stats = [[graph.gameCount, 'лесенок'], [graph.nodes.length, 'слов'], [graph.edges.length, 'связей'], [graph.clueCount, 'подсказок']];
     $('stats').replaceChildren(...stats.map(([n, text]) => { const s = element('span'); s.append(element('strong', n.toLocaleString('ru')), document.createTextNode(text)); return s; }));
-    const numbers = archive.games.map((g) => g.number).sort((a, b) => a - b);
+    const numbers = [...new Set(graph.edges.flatMap((edge) => edge.clues.map((clue) => clue.game)))].sort((a, b) => a - b);
     const date = new Date(graph.collectedAt).toLocaleDateString('ru', { timeZone: 'Europe/Moscow' });
     $('coverage').textContent = `Снимок ${date} · №${numbers[0]}–${numbers.at(-1)} · ${graph.componentCount} компонент связности`;
     $('word-options').replaceChildren(...graph.nodes.map((n) => { const o = element('option'); o.value = n.label; return o; }));
