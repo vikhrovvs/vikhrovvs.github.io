@@ -3,10 +3,10 @@
 const $ = (id) => document.getElementById(id);
 const canvas = $('graph'), ctx = canvas.getContext('2d');
 const normalize = (s) => s.trim().toLocaleLowerCase('ru').normalize('NFC').replace(/\s+/g, ' ');
-let graph, archive, adjacency, componentStats, selected = 0;
+let graph, archive, adjacency, componentStats, selected = 0, selectedEdge = null;
 let visibleNodes = [], visibleEdges = [], camera = { x: 0, y: 0, scale: 1 }, width = 1, height = 1;
 let drag = null, frame = 0;
-let degreeExamples = [], degreeCursor = 0;
+let rotatingExamples = [], exampleCursor = 0;
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 // Golden-angle hues give every connected component its own bright color.
 const prominenceTier = (degree) => Math.max(0, Math.floor((degree - 1) / 2));
@@ -54,7 +54,7 @@ function buildDegreeStatistics() {
       row.append(word, element('span', '↗', 'degree-arrow'));
       row.lastChild.setAttribute('aria-hidden', 'true');
       row.addEventListener('click', () => selectWord(pool[entry.current], true));
-      if (pool.length > 1) degreeExamples.push(entry);
+      if (pool.length > 1) rotatingExamples.push(entry);
     } else {
       row.classList.add('is-empty'); row.append(element('span', 'Нет слов', 'degree-word'));
     }
@@ -63,8 +63,8 @@ function buildDegreeStatistics() {
   // Only one row changes at a time; pausing under the pointer/focus keeps clicks stable.
   window.setInterval(() => {
     const panel = $('degree-panel');
-    if (!degreeExamples.length || document.hidden || panel.matches(':hover') || panel.contains(document.activeElement)) return;
-    const entry = degreeExamples[degreeCursor++ % degreeExamples.length];
+    if (!rotatingExamples.length || document.hidden || panel.matches(':hover') || panel.contains(document.activeElement)) return;
+    const entry = rotatingExamples[exampleCursor++ % rotatingExamples.length];
     const replace = () => {
       if (!document.hidden && !panel.matches(':hover') && !panel.contains(document.activeElement)) {
         const next = Math.floor(Math.random() * (entry.pool.length - 1));
@@ -76,6 +76,33 @@ function buildDegreeStatistics() {
     if (reducedMotion.matches) replace();
     else { entry.word.classList.add('is-updating'); window.setTimeout(replace, 180); }
   }, 3500);
+}
+function buildMultiplicityStatistics() {
+  const groups = new Map();
+  graph.edges.forEach((edge, index) => {
+    const multiplicity = edge.clues.length;
+    if (!groups.has(multiplicity)) groups.set(multiplicity, []);
+    groups.get(multiplicity).push(index);
+  });
+  for (const [multiplicity, pool] of [...groups].sort(([a], [b]) => a - b)) {
+    const row = element('button', undefined, 'degree-entry multiplicity-entry'); row.type = 'button';
+    row.dataset.multiplicity = multiplicity; row.dataset.count = pool.length;
+    const stat = element('span', undefined, 'degree-stat');
+    stat.append(element('span', `Кратность ${multiplicity}`), element('span', `${pool.length.toLocaleString('ru')} ${plural(pool.length, ['пара', 'пары', 'пар'])}`, 'degree-count'));
+    const word = element('span', undefined, 'degree-word');
+    const entry = { pool, current: Math.floor(Math.random() * pool.length), row, word };
+    entry.updateLabel = () => {
+      const edge = graph.edges[pool[entry.current]];
+      const text = `${graph.nodes[edge.a].label} ↔ ${graph.nodes[edge.b].label}`;
+      word.textContent = text; row.title = text;
+      row.setAttribute('aria-label', `Кратность ${multiplicity}, ${pool.length} ${plural(pool.length, ['пара', 'пары', 'пар'])}. Перейти к ребру ${text}`);
+    };
+    entry.updateLabel(); row.append(stat, word, element('span', '↗', 'degree-arrow'));
+    row.lastChild.setAttribute('aria-hidden', 'true');
+    row.addEventListener('click', () => focusEdge(pool[entry.current]));
+    if (pool.length > 1) rotatingExamples.push(entry);
+    $('multiplicity-list').append(row);
+  }
 }
 function summarizeComponents() {
   const summaries = new Map();
@@ -117,14 +144,26 @@ function draw() {
   const near = new Set([selected, ...adjacency[selected].map((i) => { const e = graph.edges[i]; return e.a === selected ? e.b : e.a; })]);
   for (const e of visibleEdges) {
     const a = screen(graph.nodes[e.a]), b = screen(graph.nodes[e.b]), active = e.a === selected || e.b === selected;
-    ctx.strokeStyle = active ? '#d8ff43b0' : '#88977b38'; ctx.lineWidth = active ? 1.8 : .8;
+    const multiplicity = e.clues.length, multiple = multiplicity > 1;
+    ctx.strokeStyle = multiple ? (active ? '#ffd19b' : '#ffb56bc9') : active ? '#d8ff43b0' : '#88977b38';
+    ctx.lineWidth = multiple ? 2.6 + (multiplicity - 2) * .8 + (e === selectedEdge ? 1 : 0) : active ? 1.8 : .8;
     ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+    if (multiple) {
+      const x = (a.x + b.x) / 2, y = (a.y + b.y) / 2;
+      if (x < -25 || x > width + 25 || y < -15 || y > height + 15) continue;
+      const text = `×${multiplicity}`;
+      ctx.font = '600 10px Manrope, sans-serif';
+      const w = ctx.measureText(text).width + 12;
+      ctx.fillStyle = '#302419'; ctx.strokeStyle = '#ffb56b'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.roundRect(x - w / 2, y - 9, w, 18, 4); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#ffd19b'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(text, x, y);
+    }
   }
   const occupied = [];
   const ordered = [...visibleNodes].sort((a, b) => Number(near.has(a)) - Number(near.has(b)) || graph.nodes[a].degree - graph.nodes[b].degree);
   const labels = [];
   for (const i of ordered) {
-    const n = graph.nodes[i], p = screen(n), active = i === selected, neighbor = near.has(i);
+    const n = graph.nodes[i], p = screen(n), active = i === selected || (selectedEdge && (i === selectedEdge.a || i === selectedEdge.b)), neighbor = near.has(i);
     if (p.x < -100 || p.x > width + 100 || p.y < -40 || p.y > height + 40) continue;
     const tier = prominenceTier(n.degree), hub = tier > 0;
     const radius = (hub ? 3.4 + tier * 1.65 : 2.8) + (active ? 2 : 0);
@@ -166,8 +205,17 @@ function focusWord(index) {
   camera.scale = Math.max(camera.scale, .9);
   requestDraw();
 }
+function focusEdge(index) {
+  const edge = graph.edges[index], a = graph.nodes[edge.a], b = graph.nodes[edge.b];
+  selectWord(edge.a);
+  selectedEdge = edge;
+  camera = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, scale: Math.min(2, (width - 140) / Math.max(100, Math.abs(a.x - b.x)), (height - 140) / Math.max(100, Math.abs(a.y - b.y))) };
+  $('status').textContent = `${a.label} ↔ ${b.label} · кратность ${edge.clues.length}`;
+  $('status').hidden = false;
+  requestDraw();
+}
 function selectWord(index, focus = false) {
-  selected = index; const node = graph.nodes[index];
+  selected = index; selectedEdge = null; const node = graph.nodes[index];
   $('selected-word').textContent = node.label;
   $('word-meta').textContent = `${node.degree} соседей · в ${node.games.length} лесенках`;
   showComponent(node.component);
@@ -178,6 +226,7 @@ function selectWord(index, focus = false) {
     const other = edge.a === index ? edge.b : edge.a;
     const card = element('div', undefined, 'neighbor'), button = element('button', `↔ ${graph.nodes[other].label}`);
     button.type = 'button'; button.addEventListener('click', () => selectWord(other, true)); card.append(button);
+    if (edge.clues.length > 1) card.append(element('span', `×${edge.clues.length}`, 'edge-badge'));
     for (const clue of edge.clues) card.append(element('p', clue.text), sourceLink(clue.game));
     list.append(card);
   }
@@ -206,7 +255,8 @@ async function init() {
     graph.edges.forEach((edge, i) => { adjacency[edge.a].push(i); if (edge.a !== edge.b) adjacency[edge.b].push(i); });
     componentStats = summarizeComponents();
     buildDegreeStatistics();
-    visibleNodes = graph.nodes.map((_, index) => index); visibleEdges = graph.edges;
+    buildMultiplicityStatistics();
+    visibleNodes = graph.nodes.map((_, index) => index); visibleEdges = [...graph.edges].sort((a, b) => a.clues.length - b.clues.length);
     $('visible-count').textContent = `${visibleNodes.length} слов · ${visibleEdges.length} связей`;
     const stats = [[graph.gameCount, 'лесенок'], [graph.nodes.length, 'слов'], [graph.edges.length, 'связей'], [graph.clueCount, 'подсказок']];
     $('stats').replaceChildren(...stats.map(([n, text]) => { const s = element('span'); s.append(element('strong', n.toLocaleString('ru')), document.createTextNode(text)); return s; }));

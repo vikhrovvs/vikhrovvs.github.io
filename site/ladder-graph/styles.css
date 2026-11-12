@@ -34,3 +34,8 @@ button.degree-entry:hover .degree-word,button.degree-entry:focus-visible .degree
 @media(max-width:900px){.explorer{grid-template-columns:minmax(0,1fr) 260px}.degree-panel{grid-column:1/-1;max-height:none;border-right:0;border-bottom:1px solid var(--line);padding:18px 16px}.degree-list{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px}.degree-note{margin-bottom:12px}.degree-panel>.degree-note:last-child{margin:12px 0 0}}
 @media(max-width:720px){.explorer{grid-template-columns:minmax(0,1fr)}.degree-list{grid-template-columns:repeat(2,minmax(0,1fr))}.degree-stat{font-size:10px}}
 @media(prefers-reduced-motion:reduce){.degree-word{transition:none}}
+
+.multiplicity-block{margin-top:20px;padding-top:20px;border-top:1px solid var(--line)}
+.multiplicity-entry .degree-word{font-size:12px}
+.edge-badge{display:inline-block;margin-left:8px;padding:2px 5px;border:1px solid #916844;border-radius:4px;color:#ffca8a;background:#302419;font-size:10px;vertical-align:middle}
+.graph-key .multiple-key{margin-left:8px;color:#ffca8a;font-size:11px;font-weight:700}
