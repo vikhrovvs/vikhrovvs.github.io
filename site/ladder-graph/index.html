@@ -6,9 +6,9 @@
   <meta name="theme-color" content="#11130f" />
   <meta name="description" content="Карта слов и подсказок из архива лесенок Interoves." />
   <title>Лесенки — граф связей</title>
-  <link rel="stylesheet" href="./styles.css?v=7" />
+  <link rel="stylesheet" href="./styles.css?v=8" />
   <link rel="stylesheet" href="../project-nav.css?v=1" />
-  <script src="./app.js?v=9" defer></script>
+  <script src="./app.js?v=10" defer></script>
 </head>
 <body>
   <header>
@@ -47,7 +47,7 @@
           <h2 id="path-title">Самый длинный найденный путь</h2>
           <p id="path-summary" role="status"></p>
           <div class="path-navigation"><button id="path-prev" type="button" aria-label="Предыдущее слово пути">←</button><span id="path-step"></span><button id="path-next" type="button" aria-label="Следующее слово пути">→</button><button id="path-fit" type="button">Путь целиком</button><button id="path-clear" type="button">Снять выделение</button></div>
-          <details><summary>Все слова по порядку</summary><ol id="path-words"></ol></details>
+          <details open><summary>Все слова и подсказки по порядку</summary><ol id="path-words"></ol></details>
         </section>
         <div class="viewbar"><span>Весь граф</span><span id="visible-count"></span></div>
         <p class="graph-key"><span aria-hidden="true">●</span> Больше связей — крупнее и ярче вершина: 3–4, 5–6, 7–8 и далее. Цвет — компонента связности. <span class="multiple-key">×2+</span> — повторные переходы, выделены оранжевым.</p>

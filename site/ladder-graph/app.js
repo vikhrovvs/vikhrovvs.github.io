@@ -159,9 +159,27 @@ function showPath(path) {
   const size = componentStats.get(path.component).words;
   $('path-title').textContent = path.hamiltonian ? 'Гамильтонов путь компоненты' : path.optimal ? 'Самый длинный путь компоненты' : 'Самый длинный найденный путь';
   $('path-summary').textContent = `Компонента №${path.component + 1} · ${path.nodes.length} из ${size} слов · ${path.nodes.length - 1} переходов. ${path.hamiltonian ? 'Все слова компоненты посещены ровно один раз.' : path.optimal ? 'Максимум доказан полным перебором.' : 'Эвристический поиск: максимум не доказан.'} Вершины не повторяются. Бирюзовым выделен путь; весь граф состоит из нескольких компонент.`;
-  $('path-words').replaceChildren(...path.nodes.map((node) => {
+  $('path-words').replaceChildren(...path.nodes.map((node, position) => {
     const item = element('li'), button = element('button', graph.nodes[node].label);
-    button.type = 'button'; button.addEventListener('click', () => selectWord(node, true)); item.append(button); return item;
+    button.type = 'button'; button.addEventListener('click', () => selectWord(node, true)); item.append(button);
+    const next = path.nodes[position + 1];
+    if (next !== undefined) {
+      const edge = graph.edges[adjacency[node].find((index) => {
+        const candidate = graph.edges[index];
+        return candidate.a === next || candidate.b === next;
+      })];
+      const transition = element('div', undefined, 'path-edge');
+      transition.setAttribute('role', 'group');
+      transition.setAttribute('aria-label', `Переход: ${graph.nodes[node].label} → ${graph.nodes[next].label}`);
+      transition.append(element('span', '↓ Подсказки перехода', 'path-edge-label'));
+      for (const clue of edge.clues) {
+        const entry = element('div', undefined, 'path-clue');
+        entry.append(element('p', clue.text), sourceLink(clue.game));
+        transition.append(entry);
+      }
+      item.append(transition);
+    }
+    return item;
   }));
   $('path-panel').hidden = false;
   selectWord(path.nodes[0]);

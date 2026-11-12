@@ -51,7 +51,13 @@ button:disabled{cursor:default;opacity:.4}
 #path-step{flex:1;min-width:110px;overflow-wrap:anywhere;font-size:12px}
 .path-panel details{margin-top:14px;font-size:11px;color:#b8cfc7}
 .path-panel summary{cursor:pointer}
-#path-words{max-height:200px;overflow:auto;padding-left:36px;line-height:2.4}
+#path-words{max-height:280px;overflow:auto;padding-left:36px;padding-right:8px;line-height:2.4;overflow-wrap:anywhere}
 .path-panel li button{border:0;background:none;padding:2px 5px;text-align:left}
 .path-panel li button[aria-current]{color:#69ead7;background:#263e32}
+.path-edge{margin:4px 0 12px 5px;padding:8px 12px;border-left:2px solid #3d665c;line-height:1.6}
+.path-edge-label{color:#69ead7;font-size:10px}
+.path-clue+.path-clue{margin-top:10px;padding-top:8px;border-top:1px solid #2c453a}
+.path-clue p{margin:4px 0}
+.path-clue a{font-size:10px;color:var(--muted);text-decoration:underline;text-underline-offset:3px}
+.path-clue a:hover{color:var(--accent)}
 @media(max-width:720px){.path-tools{padding:12px}.path-tools button{flex:1}.path-panel{padding:12px}.path-navigation #path-step{flex-basis:55%}}
