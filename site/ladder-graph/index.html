@@ -6,9 +6,9 @@
   <meta name="theme-color" content="#11130f" />
   <meta name="description" content="Карта слов и подсказок из архива лесенок Interoves." />
   <title>Лесенки — граф связей</title>
-  <link rel="stylesheet" href="./styles.css?v=2" />
+  <link rel="stylesheet" href="./styles.css?v=3" />
   <link rel="stylesheet" href="../project-nav.css?v=1" />
-  <script src="./app.js?v=3" defer></script>
+  <script src="./app.js?v=4" defer></script>
 </head>
 <body>
   <header>
@@ -32,7 +32,16 @@
         <p class="graph-key"><span aria-hidden="true">●</span> Больше связей — крупнее и ярче вершина: 3–4, 5–6, 7–8 и далее. Цвет — компонента связности.</p>
         <div class="stage"><canvas id="graph" tabindex="0" aria-label="Граф слов. Перетаскивайте карту; колесо меняет масштаб. Стрелки сдвигают карту, плюс и минус меняют масштаб. Слова и связи также доступны в панели справа."></canvas><div id="status" role="status">Загрузка графа…</div><div class="zoom"><button id="zoom-in" aria-label="Приблизить">+</button><button id="zoom-out" aria-label="Отдалить">−</button><button id="fit" aria-label="Показать граф целиком">⤢</button></div><span class="map-note">ПЕРЕТАСКИВАНИЕ · МАСШТАБ КОЛЕСОМ</span></div>
       </div>
-      <aside aria-label="Слово и подсказки"><p class="eyebrow">ВЫБРАННОЕ СЛОВО</p><h2 id="selected-word">—</h2><p id="word-meta" class="muted"></p><div id="neighbors"></div></aside>
+      <aside aria-label="Слово и подсказки">
+        <p class="eyebrow">ВЫБРАННОЕ СЛОВО</p><h2 id="selected-word">—</h2><p id="word-meta" class="muted"></p>
+        <section class="component-card" aria-labelledby="component-title" aria-live="polite">
+          <h3><span id="component-dot" aria-hidden="true"></span><span id="component-title">Компонента связности</span></h3>
+          <p id="component-scope"></p>
+          <dl id="component-metrics"></dl>
+          <p id="component-leader"></p>
+        </section>
+        <div id="neighbors"></div>
+      </aside>
     </section>
     <footer>Источник: авторские лесенки сообщества <a href="https://interoves.com/ladder/">Interoves</a>, которому я очень благодарен за идею. Осторожно: здесь раскрываются ответы.</footer>
   </main>

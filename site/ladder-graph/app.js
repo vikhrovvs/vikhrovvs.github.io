@@ -3,7 +3,7 @@
 const $ = (id) => document.getElementById(id);
 const canvas = $('graph'), ctx = canvas.getContext('2d');
 const normalize = (s) => s.trim().toLocaleLowerCase('ru').normalize('NFC').replace(/\s+/g, ' ');
-let graph, archive, adjacency, selected = 0, mode = 'all', game = null;
+let graph, archive, adjacency, componentStats, selected = 0, mode = 'all', game = null;
 let visibleNodes = [], visibleEdges = [], camera = { x: 0, y: 0, scale: 1 }, width = 1, height = 1;
 let drag = null, frame = 0;
 // Golden-angle hues give every connected component its own bright color.
@@ -21,6 +21,39 @@ function sourceLink(number) {
   return a;
 }
 function filteredClues(edge) { return game === null ? edge.clues : edge.clues.filter((c) => c.game === game); }
+function summarizeComponents() {
+  const summaries = new Map();
+  graph.nodes.forEach((node, index) => {
+    if (!summaries.has(node.component)) summaries.set(node.component, { words: 0, games: new Set(), edges: 0, clues: 0, leader: index });
+    const summary = summaries.get(node.component);
+    summary.words++;
+    for (const number of node.games) summary.games.add(number);
+    const leader = graph.nodes[summary.leader];
+    if (node.degree > leader.degree || (node.degree === leader.degree && node.label.localeCompare(leader.label, 'ru') < 0)) summary.leader = index;
+  });
+  for (const edge of graph.edges) {
+    const summary = summaries.get(graph.nodes[edge.a].component);
+    summary.edges++;
+    summary.clues += edge.clues.length;
+  }
+  return summaries;
+}
+function showComponent(component) {
+  const summary = componentStats.get(component), leader = graph.nodes[summary.leader];
+  $('component-title').textContent = `Компонента №${component + 1}`;
+  $('component-dot').style.backgroundColor = componentColor(component);
+  const metrics = [[summary.games.size, 'Лесенок'], [summary.words, 'Слов'], [summary.edges, 'Связей'], [summary.clues, 'Подсказок']];
+  $('component-metrics').replaceChildren(...metrics.map(([value, label]) => {
+    const item = element('div'); item.append(element('dt', label), element('dd', value.toLocaleString('ru'))); return item;
+  }));
+  $('component-scope').textContent = `Во всём архиве · ${(summary.words / graph.nodes.length * 100).toLocaleString('ru', { maximumFractionDigits: 1 })}% всех слов`;
+  const button = element('button', leader.label);
+  button.type = 'button'; button.addEventListener('click', () => {
+    if (game !== null && !leader.games.includes(game)) { game = null; $('game').value = ''; }
+    selectWord(summary.leader, true);
+  });
+  $('component-leader').replaceChildren(document.createTextNode('Больше всего связей: '), button, document.createTextNode(` · ${leader.degree}`));
+}
 function requestDraw() { if (!frame) frame = requestAnimationFrame(() => { frame = 0; draw(); }); }
 function screen(node) { return { x: (node.x - camera.x) * camera.scale + width / 2, y: (node.y - camera.y) * camera.scale + height / 2 }; }
 function draw() {
@@ -99,6 +132,7 @@ function selectWord(index, refit = false) {
   selected = index; const node = graph.nodes[index];
   $('selected-word').textContent = node.label;
   $('word-meta').textContent = `${node.degree} соседей · в ${node.games.length} лесенках`;
+  showComponent(node.component);
   const list = $('neighbors'); list.replaceChildren();
   const edges = adjacency[index].map((i) => graph.edges[i]).filter((e) => filteredClues(e).length);
   edges.sort((a, b) => graph.nodes[a.a === index ? a.b : a.a].label.localeCompare(graph.nodes[b.a === index ? b.b : b.a].label, 'ru'));
@@ -132,6 +166,7 @@ async function init() {
     }));
     adjacency = graph.nodes.map(() => []);
     graph.edges.forEach((edge, i) => { adjacency[edge.a].push(i); if (edge.a !== edge.b) adjacency[edge.b].push(i); });
+    componentStats = summarizeComponents();
     const stats = [[graph.gameCount, 'лесенок'], [graph.nodes.length, 'слов'], [graph.edges.length, 'связей'], [graph.clueCount, 'подсказок']];
     $('stats').replaceChildren(...stats.map(([n, text]) => { const s = element('span'); s.append(element('strong', n.toLocaleString('ru')), document.createTextNode(text)); return s; }));
     const numbers = archive.games.map((g) => g.number).sort((a, b) => a - b);
