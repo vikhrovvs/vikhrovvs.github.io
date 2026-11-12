@@ -146,8 +146,9 @@ function updatePathStep() {
   $('path-prev').disabled = pathCursor === 0;
   $('path-next').disabled = pathCursor === highlightedPath.nodes.length - 1;
   [...$('path-words').children].forEach((item, i) => {
-    if (i === pathCursor) item.firstChild.setAttribute('aria-current', 'step');
-    else item.firstChild.removeAttribute('aria-current');
+    const button = item.querySelector('button');
+    if (i === pathCursor) button.setAttribute('aria-current', 'step');
+    else button.removeAttribute('aria-current');
   });
 }
 function showPath(path) {
@@ -160,8 +161,8 @@ function showPath(path) {
   $('path-title').textContent = path.hamiltonian ? 'Гамильтонов путь компоненты' : path.optimal ? 'Самый длинный путь компоненты' : 'Самый длинный найденный путь';
   $('path-summary').textContent = `Компонента №${path.component + 1} · ${path.nodes.length} из ${size} слов · ${path.nodes.length - 1} переходов. ${path.hamiltonian ? 'Все слова компоненты посещены ровно один раз.' : path.optimal ? 'Максимум доказан полным перебором.' : 'Эвристический поиск: максимум не доказан.'} Вершины не повторяются. Бирюзовым выделен путь; весь граф состоит из нескольких компонент.`;
   $('path-words').replaceChildren(...path.nodes.map((node, position) => {
-    const item = element('li'), button = element('button', graph.nodes[node].label);
-    button.type = 'button'; button.addEventListener('click', () => selectWord(node, true)); item.append(button);
+    const item = element('li'), row = element('div', undefined, 'path-row'), button = element('button', graph.nodes[node].label);
+    button.type = 'button'; button.addEventListener('click', () => selectWord(node, true)); row.append(button); item.append(row);
     const next = path.nodes[position + 1];
     if (next !== undefined) {
       const edge = graph.edges[adjacency[node].find((index) => {
@@ -171,13 +172,12 @@ function showPath(path) {
       const transition = element('div', undefined, 'path-edge');
       transition.setAttribute('role', 'group');
       transition.setAttribute('aria-label', `Переход: ${graph.nodes[node].label} → ${graph.nodes[next].label}`);
-      transition.append(element('span', '↓ Подсказки перехода', 'path-edge-label'));
       for (const clue of edge.clues) {
         const entry = element('div', undefined, 'path-clue');
         entry.append(element('p', clue.text), sourceLink(clue.game));
         transition.append(entry);
       }
-      item.append(transition);
+      row.append(transition);
     }
     return item;
   }));
