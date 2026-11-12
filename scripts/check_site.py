@@ -163,6 +163,17 @@ def check_ladder_graph() -> None:
     if original_clues is not None:
         assert seen_clues == original_clues.keys()
     assert graph["gameCount"] == len(game_numbers) and graph["clueCount"] == len(seen_clues)
+    paths = graph["longPaths"]
+    assert {p["component"] for p in paths} == {n["component"] for n in nodes}
+    assert len(paths) == graph["componentCount"]
+    for path in paths:
+        route = path["nodes"]
+        assert route and len(route) == len(set(route)), "Long path repeats a word"
+        assert all(0 <= i < len(nodes) and nodes[i]["component"] == path["component"] for i in route)
+        assert all((min(a, b), max(a, b)) in seen_pairs for a, b in zip(route, route[1:]))
+        size = sum(n["component"] == path["component"] for n in nodes)
+        assert path["hamiltonian"] == (len(route) == size)
+        assert isinstance(path["optimal"], bool) and (not path["hamiltonian"] or path["optimal"])
     source_check = "local archive verified" if original_clues is not None else "local archive unavailable; graph checked independently"
     print(f"OK: ladder graph has {len(game_numbers)} games, {len(seen_clues)} clues, {len(nodes)} words, {len(seen_pairs)} edges ({source_check})")
 

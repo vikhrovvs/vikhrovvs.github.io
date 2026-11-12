@@ -6,9 +6,9 @@
   <meta name="theme-color" content="#11130f" />
   <meta name="description" content="Карта слов и подсказок из архива лесенок Interoves." />
   <title>Лесенки — граф связей</title>
-  <link rel="stylesheet" href="./styles.css?v=6" />
+  <link rel="stylesheet" href="./styles.css?v=7" />
   <link rel="stylesheet" href="../project-nav.css?v=1" />
-  <script src="./app.js?v=8" defer></script>
+  <script src="./app.js?v=9" defer></script>
 </head>
 <body>
   <header>
@@ -39,6 +39,16 @@
         <div class="toolbar">
           <form id="search-form" role="search"><label class="sr-only" for="search">Найти слово</label><input id="search" type="search" placeholder="Найти слово…" list="word-options" autocomplete="off" /><datalist id="word-options"></datalist><button type="submit">Найти ↗</button></form>
         </div>
+        <div class="path-tools" aria-label="Длинные пути">
+          <button id="show-longest" type="button" disabled>Длинный путь во всём графе</button>
+          <button id="show-component-path" type="button" disabled>В выбранной компоненте</button>
+        </div>
+        <section id="path-panel" class="path-panel" aria-labelledby="path-title" hidden>
+          <h2 id="path-title">Самый длинный найденный путь</h2>
+          <p id="path-summary" role="status"></p>
+          <div class="path-navigation"><button id="path-prev" type="button" aria-label="Предыдущее слово пути">←</button><span id="path-step"></span><button id="path-next" type="button" aria-label="Следующее слово пути">→</button><button id="path-fit" type="button">Путь целиком</button><button id="path-clear" type="button">Снять выделение</button></div>
+          <details><summary>Все слова по порядку</summary><ol id="path-words"></ol></details>
+        </section>
         <div class="viewbar"><span>Весь граф</span><span id="visible-count"></span></div>
         <p class="graph-key"><span aria-hidden="true">●</span> Больше связей — крупнее и ярче вершина: 3–4, 5–6, 7–8 и далее. Цвет — компонента связности. <span class="multiple-key">×2+</span> — повторные переходы, выделены оранжевым.</p>
         <div class="stage"><canvas id="graph" tabindex="0" aria-label="Граф слов. Перетаскивайте карту; колесо меняет масштаб. Стрелки сдвигают карту, плюс и минус меняют масштаб. Слова и связи также доступны в панели справа."></canvas><div id="status" role="status">Загрузка графа…</div><div class="zoom"><button id="zoom-in" aria-label="Приблизить">+</button><button id="zoom-out" aria-label="Отдалить">−</button><button id="fit" aria-label="Показать граф целиком">⤢</button></div><span class="map-note">ПЕРЕТАСКИВАНИЕ · МАСШТАБ КОЛЕСОМ</span></div>

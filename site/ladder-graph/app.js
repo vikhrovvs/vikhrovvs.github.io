@@ -7,6 +7,8 @@ let graph, adjacency, componentStats, selected = 0, selectedEdge = null;
 let visibleNodes = [], visibleEdges = [], camera = { x: 0, y: 0, scale: 1 }, width = 1, height = 1;
 let drag = null, frame = 0;
 let rotatingExamples = [], exampleCursor = 0;
+let highlightedPath = null, pathPositions = new Map(), pathEdges = new Set(), pathCursor = 0;
+const edgeKey = (a, b) => `${Math.min(a, b)}:${Math.max(a, b)}`;
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 // Golden-angle hues give every connected component its own bright color.
 const prominenceTier = (degree) => Math.max(0, Math.floor((degree - 1) / 2));
@@ -137,16 +139,52 @@ function showComponent(component) {
   $('component-leader').replaceChildren(document.createTextNode('Больше всего связей: '), button, document.createTextNode(` · ${leader.degree}`));
 }
 function requestDraw() { if (!frame) frame = requestAnimationFrame(() => { frame = 0; draw(); }); }
+function updatePathStep() {
+  if (!highlightedPath) return;
+  if (pathPositions.has(selected)) pathCursor = pathPositions.get(selected);
+  $('path-step').textContent = `${pathCursor + 1} / ${highlightedPath.nodes.length} · ${graph.nodes[highlightedPath.nodes[pathCursor]].label}`;
+  $('path-prev').disabled = pathCursor === 0;
+  $('path-next').disabled = pathCursor === highlightedPath.nodes.length - 1;
+  [...$('path-words').children].forEach((item, i) => {
+    if (i === pathCursor) item.firstChild.setAttribute('aria-current', 'step');
+    else item.firstChild.removeAttribute('aria-current');
+  });
+}
+function showPath(path) {
+  if (!path) return;
+  highlightedPath = path;
+  pathPositions = new Map(path.nodes.map((node, i) => [node, i]));
+  pathEdges = new Set(path.nodes.slice(1).map((node, i) => edgeKey(path.nodes[i], node)));
+  pathCursor = 0;
+  const size = componentStats.get(path.component).words;
+  $('path-title').textContent = path.hamiltonian ? 'Гамильтонов путь компоненты' : path.optimal ? 'Самый длинный путь компоненты' : 'Самый длинный найденный путь';
+  $('path-summary').textContent = `Компонента №${path.component + 1} · ${path.nodes.length} из ${size} слов · ${path.nodes.length - 1} переходов. ${path.hamiltonian ? 'Все слова компоненты посещены ровно один раз.' : path.optimal ? 'Максимум доказан полным перебором.' : 'Эвристический поиск: максимум не доказан.'} Вершины не повторяются. Бирюзовым выделен путь; весь граф состоит из нескольких компонент.`;
+  $('path-words').replaceChildren(...path.nodes.map((node) => {
+    const item = element('li'), button = element('button', graph.nodes[node].label);
+    button.type = 'button'; button.addEventListener('click', () => selectWord(node, true)); item.append(button); return item;
+  }));
+  $('path-panel').hidden = false;
+  selectWord(path.nodes[0]);
+  fitNodes(path.nodes);
+}
+function clearPath() {
+  highlightedPath = null; pathPositions.clear(); pathEdges.clear();
+  $('path-panel').hidden = true; $('path-words').replaceChildren(); requestDraw();
+}
 function screen(node) { return { x: (node.x - camera.x) * camera.scale + width / 2, y: (node.y - camera.y) * camera.scale + height / 2 }; }
 function draw() {
   const dpr = window.devicePixelRatio || 1;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, width, height);
   const near = new Set([selected, ...adjacency[selected].map((i) => { const e = graph.edges[i]; return e.a === selected ? e.b : e.a; })]);
-  for (const e of visibleEdges) {
+  const onPath = (e) => pathEdges.has(edgeKey(e.a, e.b));
+  const drawEdges = highlightedPath ? [...visibleEdges].sort((a, b) => Number(onPath(a)) - Number(onPath(b))) : visibleEdges;
+  for (const e of drawEdges) {
+    const pathEdge = onPath(e);
+    ctx.globalAlpha = highlightedPath && !pathEdge ? .15 : 1;
     const a = screen(graph.nodes[e.a]), b = screen(graph.nodes[e.b]), active = e.a === selected || e.b === selected;
     const multiplicity = e.clues.length, multiple = multiplicity > 1;
-    ctx.strokeStyle = multiple ? (active ? '#ffd19b' : '#ffb56bc9') : active ? '#d8ff43b0' : '#88977b38';
-    ctx.lineWidth = multiple ? 2.6 + (multiplicity - 2) * .8 + (e === selectedEdge ? 1 : 0) : active ? 1.8 : .8;
+    ctx.strokeStyle = pathEdge ? '#69ead7' : multiple ? (active ? '#ffd19b' : '#ffb56bc9') : active ? '#d8ff43b0' : '#88977b38';
+    ctx.lineWidth = pathEdge ? 3 : multiple ? 2.6 + (multiplicity - 2) * .8 + (e === selectedEdge ? 1 : 0) : active ? 1.8 : .8;
     ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
     if (multiple) {
       const x = (a.x + b.x) / 2, y = (a.y + b.y) / 2;
@@ -163,6 +201,8 @@ function draw() {
   const ordered = [...visibleNodes].sort((a, b) => Number(near.has(a)) - Number(near.has(b)) || graph.nodes[a].degree - graph.nodes[b].degree);
   const labels = [];
   for (const i of ordered) {
+    const pathNode = pathPositions.has(i);
+    ctx.globalAlpha = highlightedPath && !pathNode && i !== selected ? .2 : 1;
     const n = graph.nodes[i], p = screen(n), active = i === selected || (selectedEdge && (i === selectedEdge.a || i === selectedEdge.b)), neighbor = near.has(i);
     if (p.x < -100 || p.x > width + 100 || p.y < -40 || p.y > height + 40) continue;
     const tier = prominenceTier(n.degree), hub = tier > 0;
@@ -171,29 +211,35 @@ function draw() {
       ctx.shadowColor = active ? '#d8ff43' : componentColor(n.component, .65);
       ctx.shadowBlur = active ? 16 : tier * 2;
     }
-    ctx.fillStyle = componentColor(n.component, active || neighbor ? 1 : hub ? Math.min(1, .55 + tier * .12) : .4);
+    ctx.fillStyle = pathNode ? '#69ead7' : componentColor(n.component, active || neighbor ? 1 : hub ? Math.min(1, .55 + tier * .12) : .4);
     ctx.beginPath(); ctx.arc(p.x, p.y, radius, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0;
     if (hub || active) {
       ctx.strokeStyle = active ? '#d8ff43' : componentColor(n.component, Math.min(.85, .25 + tier * .13));
       ctx.lineWidth = active ? 2.5 : .6 + tier * .45;
       ctx.beginPath(); ctx.arc(p.x, p.y, radius + 2 + tier * .4, 0, Math.PI * 2); ctx.stroke();
     }
-    if (active || neighbor || camera.scale > .8 || hub) labels.push({ n, p, active, neighbor, radius, tier });
+    if ((!highlightedPath || pathNode || active) && (active || neighbor || camera.scale > .8 || hub)) labels.push({ i, n, p, active, neighbor, radius, tier });
   }
+  ctx.globalAlpha = 1;
   labels.sort((a, b) => Number(b.active) - Number(a.active) || Number(b.neighbor) - Number(a.neighbor) || b.n.degree - a.n.degree);
-  for (const { n, p, active, neighbor, radius, tier } of labels) {
+  for (const { i, n, p, active, neighbor, radius, tier } of labels) {
+    const position = pathPositions.get(i);
+    const label = position === undefined ? n.label : `${position + 1} · ${n.label}`;
     ctx.font = `${active ? 700 : tier >= 3 ? 600 : 500} ${active ? 15 : 11 + Math.min(3, tier) * .5}px Manrope, sans-serif`;
-    const w = ctx.measureText(n.label).width + 10, x = p.x - w / 2, y = p.y + radius + 6;
+    const w = ctx.measureText(label).width + 10, x = p.x - w / 2, y = p.y + radius + 6;
     const box = { x, y, w, h: 20 };
     if (!active && occupied.some((r) => x < r.x + r.w && x + w > r.x && y < r.y + r.h && y + 20 > r.y)) continue;
     occupied.push(box); ctx.fillStyle = active ? '#d8ff43' : '#141a12ed';
     ctx.beginPath(); ctx.roundRect(x, y, w, 20, 4); ctx.fill();
-    ctx.fillStyle = active ? '#11130f' : neighbor ? '#eef4df' : '#bcc9ad'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(n.label, p.x, y + 10);
+    ctx.fillStyle = active ? '#11130f' : neighbor ? '#eef4df' : '#bcc9ad'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(label, p.x, y + 10);
   }
 }
 function fit() {
-  if (!visibleNodes.length || width < 130 || height < 110) return;
-  const points = visibleNodes.map((i) => graph.nodes[i]);
+  fitNodes(visibleNodes);
+}
+function fitNodes(indices) {
+  if (!indices.length || width < 130 || height < 110) return;
+  const points = indices.map((i) => graph.nodes[i]);
   const minX = Math.min(...points.map((n) => n.x)), maxX = Math.max(...points.map((n) => n.x));
   const minY = Math.min(...points.map((n) => n.y)), maxY = Math.max(...points.map((n) => n.y));
   camera = { x: (minX + maxX) / 2, y: (minY + maxY) / 2, scale: Math.min(2, (width - 120) / Math.max(100, maxX - minX), (height - 100) / Math.max(100, maxY - minY)) };
@@ -219,6 +265,7 @@ function selectWord(index, focus = false) {
   $('selected-word').textContent = node.label;
   $('word-meta').textContent = `${node.degree} соседей · в ${node.games.length} лесенках`;
   showComponent(node.component);
+  updatePathStep();
   const list = $('neighbors'); list.replaceChildren();
   const edges = adjacency[index].map((i) => graph.edges[i]);
   edges.sort((a, b) => graph.nodes[a.a === index ? a.b : a.a].label.localeCompare(graph.nodes[b.a === index ? b.b : b.a].label, 'ru'));
@@ -267,8 +314,17 @@ async function init() {
     const initial = normalize(new URLSearchParams(location.search).get('word') || '');
     selected = initial ? graph.nodes.findIndex((n) => n.id === initial) : -1;
     if (selected < 0) selected = graph.nodes.reduce((best, n, i) => n.degree > graph.nodes[best].degree ? i : best, 0);
-    new ResizeObserver(() => { const rect = canvas.getBoundingClientRect(); width = rect.width; height = rect.height; canvas.width = Math.round(width * (devicePixelRatio || 1)); canvas.height = Math.round(height * (devicePixelRatio || 1)); fit(); if (initial) focusWord(selected); }).observe(canvas);
+    new ResizeObserver(() => { const rect = canvas.getBoundingClientRect(); width = rect.width; height = rect.height; canvas.width = Math.round(width * (devicePixelRatio || 1)); canvas.height = Math.round(height * (devicePixelRatio || 1)); fitNodes(highlightedPath?.nodes || visibleNodes); if (initial && !highlightedPath) focusWord(selected); }).observe(canvas);
     selectWord(selected);
+    if (graph.longPaths?.length) {
+      $('show-longest').disabled = false; $('show-component-path').disabled = false;
+      $('show-longest').addEventListener('click', () => showPath(graph.longPaths.reduce((best, path) => path.nodes.length > best.nodes.length ? path : best)));
+      $('show-component-path').addEventListener('click', () => showPath(graph.longPaths.find((path) => path.component === graph.nodes[selected].component)));
+    }
+    $('path-prev').addEventListener('click', () => selectWord(highlightedPath.nodes[Math.max(0, pathCursor - 1)], true));
+    $('path-next').addEventListener('click', () => selectWord(highlightedPath.nodes[Math.min(highlightedPath.nodes.length - 1, pathCursor + 1)], true));
+    $('path-fit').addEventListener('click', () => fitNodes(highlightedPath.nodes));
+    $('path-clear').addEventListener('click', clearPath);
     $('search-form').addEventListener('submit', (e) => { e.preventDefault(); search(); });
     $('fit').addEventListener('click', fit); $('zoom-in').addEventListener('click', () => zoom(1.3)); $('zoom-out').addEventListener('click', () => zoom(1 / 1.3));
     canvas.addEventListener('wheel', (e) => { e.preventDefault(); const rect = canvas.getBoundingClientRect(); zoom(Math.exp(-e.deltaY * .001), e.clientX - rect.left, e.clientY - rect.top); }, { passive: false });

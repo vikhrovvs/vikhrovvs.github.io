@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { findLongPaths } from './ladder-paths.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const folder = path.join(root, 'site/ladder-graph/data');
@@ -78,7 +79,8 @@ components.forEach((component, componentId) => {
   for (const i of component) { nodes[i].x = Math.round(nodes[i].x - minX + cursorX + 100); nodes[i].y = Math.round(nodes[i].y - minY + cursorY + 85); }
   cursorX += width; rowHeight = Math.max(rowHeight, height);
 });
-const graph = { schemaVersion: 1, source: archive.source, collectedAt: archive.collectedAt, gameCount: archive.games.length, clueCount: archive.games.reduce((n, g) => n + g.transitions.length, 0), componentCount: components.length, nodes, edges };
+const longPaths = findLongPaths(adj, components);
+const graph = { schemaVersion: 1, source: archive.source, collectedAt: archive.collectedAt, gameCount: archive.games.length, clueCount: archive.games.reduce((n, g) => n + g.transitions.length, 0), componentCount: components.length, nodes, edges, longPaths };
 fs.mkdirSync(folder, { recursive: true });
 fs.writeFileSync(path.join(folder, 'graph.json'), JSON.stringify(graph));
 console.log(`${graph.gameCount} games, ${graph.clueCount} clues, ${nodes.length} words, ${edges.length} undirected edges, ${components.length} components`);

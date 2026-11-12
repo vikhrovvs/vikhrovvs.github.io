@@ -35,6 +35,7 @@ jobs:
         run: |
           python3 scripts/check_site.py
           python3 scripts/test_word_grid.py
+          node scripts/test-ladder-paths.mjs
           node --check site/anagrams/app.js
           node --check site/word-route/app.js
           node --check site/word-grid/app.js
