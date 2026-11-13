@@ -43,6 +43,42 @@ export function buildComponentHistory(graph) {
   });
 }
 
+const streakDefinitions = [
+  { id: 'isolated', label: 'Без присоединений', note: 'Только новые отдельные компоненты: ни одного общего слова с прежним графом.', matches: (s) => s.joined.length === 0 },
+  { id: 'connected', label: 'С пересечениями', note: 'Есть общие слова с прежним графом: присоединения, слияния или внутренние связи.', matches: (s) => s.joined.length > 0 },
+  { id: 'attachments', label: 'Только присоединения', note: 'Новые слова присоединяются ровно к одной прежней компоненте; слияния не входят.', matches: (s) => s.type === 'attach' },
+  { id: 'mergers', label: 'Слияния', note: 'Каждая лесенка объединяет хотя бы две прежние компоненты.', matches: (s) => s.type === 'merge' },
+  { id: 'without-mergers', label: 'Без слияний', note: 'Новые компоненты, присоединения и внутренние связи; без объединения прежних компонент.', matches: (s) => s.type !== 'merge' },
+  { id: 'growth', label: 'Рост крупнейшей', note: 'Размер крупнейшей компоненты увеличивается с каждой лесенкой.', matches: (s) => s.largest > s.previousLargest },
+  { id: 'plateau', label: 'Крупнейшая не растёт', note: 'Размер крупнейшей не меняется, хотя другие компоненты могут расти.', matches: (s) => s.largest === s.previousLargest },
+];
+
+export function analyzeComponentHistory(steps) {
+  const first = (predicate) => steps.find(predicate) ?? null;
+  const streaks = streakDefinitions.map(({ matches, ...definition }) => {
+    const lengths = [], ranges = [];
+    let length = 0, maximum = 0;
+    for (const [index, step] of steps.entries()) {
+      length = matches(step) ? length + 1 : 0;
+      lengths.push(length);
+      if (length > maximum) { maximum = length; ranges.length = 0; }
+      if (length && length === maximum) ranges.push({ start: index - length + 1, end: index });
+    }
+    return { ...definition, lengths, maximum, ranges };
+  });
+  let majorityStart = steps.length;
+  for (let i = steps.length - 1; i >= 0 && steps[i].largest * 2 > steps[i].total; i--) majorityStart = i;
+  return {
+    firstAttachment: first((s) => s.type === 'attach'),
+    firstMerge: first((s) => s.type === 'merge'),
+    firstTripleMerge: first((s) => s.joined.length === 3),
+    largestJump: steps.reduce((best, step) => !best || step.largest - step.previousLargest > best.largest - best.previousLargest ? step : best, null),
+    sustainedMajority: steps[majorityStart] ?? null,
+    thresholds: [100, 500, 1000].map((size) => ({ size, step: first((s) => s.largest >= size) })),
+    streaks,
+  };
+}
+
 const labels = { birth: 'Новая компонента', attach: 'Присоединение', merge: 'Слияние компонент', internal: 'Связи внутри компоненты' };
 const colors = { birth: '#d8ff43', attach: '#99a88e', merge: '#ffb56b', internal: '#aeb5e8' };
 const fmt = (n) => n.toLocaleString('ru');
@@ -66,6 +102,7 @@ const svgEl = (tag, attrs = {}, text) => {
 
 export function initHistory(graph, showWord) {
   const $ = (id) => document.getElementById(id), steps = buildComponentHistory(graph);
+  const facts = analyzeComponentHistory(steps);
   if (!steps.length) { $('history-loading').textContent = 'В архиве пока нет лесенок.'; return; }
   $('history-loading').hidden = true;
   $('history-content').hidden = false;
@@ -87,6 +124,48 @@ export function initHistory(graph, showWord) {
     button.addEventListener('click', () => choose(item.step.index));
     $('history-milestones').append(button);
   }
+  const milestoneButtons = [];
+  function addFact(container, title, step, value, note) {
+    const button = el('button', undefined, 'history-fact'); button.type = 'button';
+    button.append(el('span', title), el('strong', step ? value : 'Пока не было'), el('small', step ? note : 'В текущем снимке архива'));
+    button.disabled = !step;
+    if (step) {
+      button.addEventListener('click', () => { choose(step.index); $('history-position').scrollIntoView({ block: 'center', behavior: 'instant' }); });
+      milestoneButtons.push({ button, index: step.index });
+    }
+    $(container).append(button);
+  }
+  const firstEvents = [
+    ['Первое присоединение', facts.firstAttachment, 'Новые слова встретили одну прежнюю компоненту.'],
+    ['Первое слияние', facts.firstMerge, 'Две или больше прежних компонент стали одной.'],
+    ['Первое слияние 3 компонент', facts.firstTripleMerge, 'Три прежде раздельные компоненты соединились.'],
+  ];
+  for (const [title, step, note] of firstEvents) addFact('history-firsts', title, step, `№${step?.number}`, note);
+  const jump = facts.largestJump, majority = facts.sustainedMajority;
+  addFact('history-records', 'Самый большой скачок крупнейшей', jump, `+${jump ? words(jump.largest - jump.previousLargest) : 0}`, `№${jump?.number} · ${jump?.previousLargest} → ${jump?.largest} слов`);
+  addFact('history-records', 'Устойчивое большинство', majority, `С №${majority?.number}`, 'После каждой лесенки до конца снимка больше половины слов находятся в крупнейшей компоненте.');
+  for (const { size, step } of facts.thresholds) addFact('history-records', `В крупнейшей ≥ ${words(size)}`, step, `№${step?.number}`, `Впервые достигнуто: ${step ? words(step.largest) : ''}.`);
+
+  const streakCells = [];
+  const rangeLabel = (start, end) => start === end ? `№${steps[start].number}` : `№${steps[start].number}–${steps[end].number}`;
+  function rangeButton(start, end) {
+    const button = el('button', rangeLabel(start, end), 'history-range'); button.type = 'button';
+    button.title = 'Показать конец серии';
+    button.addEventListener('click', () => { choose(end); $('history-position').scrollIntoView({ block: 'center', behavior: 'instant' }); });
+    return button;
+  }
+  for (const streak of facts.streaks) {
+    const row = el('tr'); row.dataset.streak = streak.id;
+    const label = el('th'); label.scope = 'row'; label.append(el('strong', streak.label), el('small', streak.note));
+    const record = el('td'); record.append(el('strong', String(streak.maximum)));
+    const ranges = el('div', undefined, 'history-ranges');
+    for (const { start, end } of streak.ranges) ranges.append(rangeButton(start, end));
+    record.append(ranges);
+    const current = el('td'); streakCells.push({ streak, current });
+    row.append(label, record, current); $('history-streaks').append(row);
+  }
+  $('history-latest').textContent = `К последней · №${final.number} →`;
+  $('history-latest').addEventListener('click', () => choose(steps.length - 1));
   for (const [type, label] of Object.entries(labels)) {
     const item = el('span', undefined, 'history-legend-item');
     item.style.setProperty('--event-color', colors[type]);
@@ -169,6 +248,16 @@ export function initHistory(graph, showWord) {
     $('history-slider').value = selected;
     $('history-slider').setAttribute('aria-valuetext', `Лесенка №${step.number}, ${step.components} компонент, крупнейшая — ${step.largest} слов`);
     $('history-position').textContent = `Лесенка №${step.number} · ${selected + 1} / ${steps.length}`;
+    $('history-streak-step').textContent = `На шаге №${step.number}`;
+    for (const { streak, current } of streakCells) {
+      const length = streak.lengths[selected];
+      current.replaceChildren(el('strong', String(length)));
+      if (length) current.append(rangeButton(selected - length + 1, selected));
+      else current.append(el('small', 'Нет серии'));
+    }
+    for (const { button, index } of milestoneButtons) {
+      if (index === selected) button.setAttribute('aria-current', 'step'); else button.removeAttribute('aria-current');
+    }
     $('history-prev').disabled = selected === 0; $('history-next').disabled = selected === steps.length - 1;
     guide.setAttribute('x1', x(selected)); guide.setAttribute('x2', x(selected));
     countDot.setAttribute('cx', x(selected)); countDot.setAttribute('cy', countY(step.components));

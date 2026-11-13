@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { buildComponentHistory } from '../site/ladder-graph/history.js';
+import { buildComponentHistory, analyzeComponentHistory } from '../site/ladder-graph/history.js';
 
 function makeGraph(games) {
   const nodes = [], lookup = new Map(), edges = new Map();
@@ -27,6 +27,34 @@ assert.equal(steps[6].resultSize, 1); assert.equal(steps[6].largest, 7);
 assert.deepEqual(buildComponentHistory({ nodes: [], edges: [] }), []);
 const changingLeader = buildComponentHistory(makeGraph([[1, ['a', 'b', 'c']], [2, ['d', 'e']], [3, ['d', 'f', 'g']]]));
 assert.deepEqual(changingLeader.map((s) => s.largest), [3, 3, 4]);
+
+const facts = analyzeComponentHistory(steps);
+assert.equal(facts.firstAttachment.number, 12);
+assert.equal(facts.firstMerge.number, 11);
+assert.equal(facts.firstTripleMerge.number, 11);
+assert.equal(facts.largestJump.number, 11);
+assert.equal(facts.sustainedMajority.number, 11); // Earlier majorities are interrupted.
+assert.ok(facts.thresholds.every(({ step }) => step === null));
+const mergerRuns = facts.streaks.find((s) => s.id === 'mergers');
+assert.equal(mergerRuns.maximum, 1);
+assert.deepEqual(mergerRuns.lengths, [0, 0, 0, 1, 0, 0, 0]);
+const lone = analyzeComponentHistory(buildComponentHistory(makeGraph([[10, ['a', 'b']]])));
+assert.equal(lone.firstAttachment, null); assert.equal(lone.firstMerge, null); assert.equal(lone.firstTripleMerge, null);
+assert.equal(lone.sustainedMajority.number, 10);
+const emptyFacts = analyzeComponentHistory([]);
+assert.equal(emptyFacts.largestJump, null); assert.equal(emptyFacts.sustainedMajority, null);
+assert.ok(emptyFacts.streaks.every((s) => s.maximum === 0 && s.ranges.length === 0 && s.lengths.length === 0));
+const tiedSteps = ['birth', 'birth', 'merge', 'merge', 'attach', 'merge', 'merge', 'attach'].map((type, index) => ({
+  type, index, number: (index + 1) * 10, joined: Array(type === 'birth' ? 0 : type === 'merge' ? 2 : 1),
+  largest: 100 + index * 200, previousLargest: index ? 100 + (index - 1) * 200 : 0, total: 200 + index * 300,
+}));
+const tiedFacts = analyzeComponentHistory(tiedSteps);
+assert.deepEqual(tiedFacts.streaks.find((s) => s.id === 'mergers').ranges, [{ start: 2, end: 3 }, { start: 5, end: 6 }]);
+assert.equal(tiedFacts.streaks.find((s) => s.id === 'attachments').lengths.at(-1), 1);
+assert.equal(tiedFacts.streaks.find((s) => s.id === 'growth').maximum, 8);
+assert.deepEqual(tiedFacts.thresholds.map(({ step }) => step.number), [10, 30, 60]);
+// Equal growth records choose the earliest step; numbering gaps do not inflate streaks.
+assert.equal(tiedFacts.largestJump.number, 20);
 
 // Independent BFS over each historical prefix verifies every point, not just the final one.
 const graph = JSON.parse(fs.readFileSync(new URL('../site/ladder-graph/data/graph.json', import.meta.url)));
@@ -55,4 +83,22 @@ assert.equal(history.at(-1).components, graph.componentCount);
 assert.equal(history.at(-1).total, graph.nodes.length);
 assert.equal(history.length, graph.gameCount);
 assert.deepEqual(buildComponentHistory({ ...graph, edges: [...graph.edges].reverse() }), history);
+const actualFacts = analyzeComponentHistory(history);
+for (const streak of actualFacts.streaks) {
+  const predicates = {
+    isolated: (s) => s.joined.length === 0, connected: (s) => s.joined.length > 0,
+    attachments: (s) => s.type === 'attach', mergers: (s) => s.type === 'merge',
+    'without-mergers': (s) => s.type !== 'merge', growth: (s) => s.largest > s.previousLargest,
+    plateau: (s) => s.largest === s.previousLargest,
+  };
+  const expected = history.map((_, i) => {
+    let length = 0;
+    for (let j = i; j >= 0 && predicates[streak.id](history[j]); j--) length++;
+    return length;
+  });
+  assert.deepEqual(streak.lengths, expected);
+  assert.equal(streak.maximum, Math.max(...expected));
+  assert.deepEqual(streak.ranges, expected.flatMap((length, i) => length === streak.maximum && length ? [{ start: i - length + 1, end: i }] : []));
+}
+console.log(`OK: first events, absent events, all tied streak records, current streak at every step, thresholds and sustained majority`);
 console.log(`OK: synthetic births, attachments, triple merge, repeated edges, self-loop, changing leader; BFS matches all ${history.length} historical steps`);
