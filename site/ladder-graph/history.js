@@ -12,6 +12,7 @@ export function buildComponentHistory(graph) {
     while (parent[v] !== v) { const next = parent[v]; parent[v] = r; v = next; }
     return r;
   };
+  const wordGames = graph.nodes.map(() => []);
   let components = 0, largest = 0;
   return [...games].sort(([a], [b]) => a - b).map(([number, clues], index) => {
     clues.sort((a, b) => a.index - b.index);
@@ -23,6 +24,15 @@ export function buildComponentHistory(graph) {
       touched.get(r).words.push(node);
     }
     const joined = [...touched.values()].sort((a, b) => b.size - a.size || a.words[0] - b.words[0]);
+    const overlaps = new Map();
+    for (const node of nodes) for (const game of wordGames[node]) {
+      if (!overlaps.has(game)) overlaps.set(game, []);
+      overlaps.get(game).push(node);
+    }
+    const previousGames = [...overlaps].sort(([a], [b]) => a - b).map(([number, words]) => ({ number, words }));
+    const gameEdges = new Set(clues.map(({ a, b }) => `${Math.min(a, b)}:${Math.max(a, b)}`));
+    const reusedEdges = [...gameEdges].filter((key) => seenEdges.has(key)).length;
+    for (const node of nodes) wordGames[node].push(number);
     const before = components, previousLargest = largest, newWords = nodes.filter((node) => !active.has(node));
     for (const node of newWords) { active.add(node); components++; largest = Math.max(largest, 1); }
     let newEdges = 0;
@@ -35,7 +45,7 @@ export function buildComponentHistory(graph) {
       parent[rb] = ra; sizes[ra] += sizes[rb]; components--; largest = Math.max(largest, sizes[ra]);
     }
     return {
-      index, number, nodes, joined, newWords: newWords.length, newEdges,
+      index, number, nodes, joined, previousGames, reusedEdges, newWords: newWords.length, newEdges,
       before, components, delta: components - before, largest, previousLargest,
       total: active.size, resultSize: sizes[root(nodes[0])],
       type: !joined.length ? 'birth' : joined.length > 1 ? 'merge' : newWords.length ? 'attach' : 'internal',
@@ -66,6 +76,30 @@ export function analyzeComponentHistory(steps) {
     }
     return { ...definition, lengths, maximum, ranges };
   });
+  const record = (value) => {
+    const maximum = steps.reduce((best, step) => Math.max(best, value(step)), 0);
+    return { maximum, steps: maximum ? steps.filter((step) => value(step) === maximum) : [] };
+  };
+  const oldWords = record((s) => s.nodes.length - s.newWords);
+  oldWords.moreThanTwo = steps.filter((s) => s.nodes.length - s.newWords > 2).length;
+  const previousLadders = record((s) => s.previousGames.length);
+  const reusedEdges = record((s) => s.reusedEdges);
+  let sharedWordsMaximum = 0, sharedWordPairs = [];
+  for (const step of steps) for (const previous of step.previousGames) {
+    const size = previous.words.length;
+    if (size > sharedWordsMaximum) { sharedWordsMaximum = size; sharedWordPairs = []; }
+    if (size === sharedWordsMaximum) sharedWordPairs.push({ step, previous });
+  }
+  let longestAbsence = 0, returns = [];
+  const lastSeen = new Map();
+  for (const [index, step] of steps.entries()) for (const node of step.nodes) {
+    if (lastSeen.has(node)) {
+      const previous = lastSeen.get(node), gap = index - previous.index - 1;
+      if (gap > longestAbsence) { longestAbsence = gap; returns = []; }
+      if (gap > 0 && gap === longestAbsence) returns.push({ step, previous: previous.step, node });
+    }
+    lastSeen.set(node, { step, index });
+  }
   let majorityStart = steps.length;
   for (let i = steps.length - 1; i >= 0 && steps[i].largest * 2 > steps[i].total; i--) majorityStart = i;
   return {
@@ -76,6 +110,11 @@ export function analyzeComponentHistory(steps) {
     sustainedMajority: steps[majorityStart] ?? null,
     thresholds: [100, 500, 1000].map((size) => ({ size, step: first((s) => s.largest >= size) })),
     streaks,
+    reuse: {
+      oldWords, previousLadders, reusedEdges,
+      sharedWords: { maximum: sharedWordsMaximum, pairs: sharedWordPairs },
+      absence: { maximum: longestAbsence, returns },
+    },
   };
 }
 
@@ -145,6 +184,28 @@ export function initHistory(graph, showWord) {
     ['Первое слияние 3 компонент', facts.firstTripleMerge, 'Три прежде раздельные компоненты соединились.'],
   ];
   for (const [title, step, note] of firstEvents) addFact('history-firsts', title, step, `№${step?.number}`, note);
+  const { oldWords, previousLadders, reusedEdges, sharedWords, absence } = facts.reuse;
+  const cases = (items) => `${items.length} ${plural(items.length, ['лесенка', 'лесенки', 'лесенок'])}: ${items.map((s) => `№${s.number}`).join(', ')}`;
+  if (oldWords.maximum > 2) {
+    const step = oldWords.steps[0];
+    const freshLinks = step.reusedEdges === 0 ? ' Все её связи были новыми.' : '';
+    addFact('history-records', 'Больше всего знакомых слов', step, words(oldWords.maximum), `${cases(oldWords.steps)}. Более 2 старых слов — в ${oldWords.moreThanTwo} из ${steps.length} лесенок. Считаем разные слова, уже встречавшиеся до этой лесенки.${oldWords.steps.length === 1 ? freshLinks : ''}`);
+  }
+  if (previousLadders.maximum > 1) {
+    const step = previousLadders.steps[0];
+    addFact('history-records', 'Пересечение с прежними лесенками', step, `${previousLadders.maximum} ${plural(previousLadders.maximum, ['лесенка', 'лесенки', 'лесенок'])}`, `${cases(previousLadders.steps)}.${previousLadders.steps.length === 1 ? ` Через ${words(step.nodes.length - step.newWords)}.` : ''} Считаем разные прежние задания, а не компоненты.`);
+  }
+  if (sharedWords.maximum > 1) {
+    const { step, previous } = sharedWords.pairs[0];
+    const pairs = sharedWords.pairs.map(({ step, previous }) => `№${step.number} и №${previous.number}`).join('; ');
+    addFact('history-records', 'Общие слова с одной старой лесенкой', step, words(sharedWords.maximum), `${sharedWords.pairs.length} ${plural(sharedWords.pairs.length, ['пара', 'пары', 'пар'])}: ${pairs}.${sharedWords.pairs.length === 1 ? ` ${previous.words.map((node) => graph.nodes[node].label).join(', ')}.` : ''}`);
+  }
+  if (reusedEdges.maximum > 1) addFact('history-records', 'Больше всего повторных связей', reusedEdges.steps[0], `${reusedEdges.maximum} ${plural(reusedEdges.maximum, ['связь', 'связи', 'связей'])}`, `${cases(reusedEdges.steps)}. Разные неориентированные пары, встречавшиеся в более ранних лесенках.`);
+  if (absence.maximum > 0) {
+    const { step } = absence.returns[0];
+    const examples = absence.returns.map(({ step, previous, node }) => `«${graph.nodes[node].label}»: №${previous.number} → №${step.number}`).join('; ');
+    addFact('history-records', 'Самое долгое возвращение слова', step, `${absence.maximum} ${plural(absence.maximum, ['лесенка', 'лесенки', 'лесенок'])}`, `${absence.returns.length} ${plural(absence.returns.length, ['случай', 'случая', 'случаев'])}: ${examples}. Считаем доступные лесенки строго между двумя последовательными появлениями слова.`);
+  }
   const jump = facts.largestJump, majority = facts.sustainedMajority;
   addFact('history-records', 'Самый большой скачок крупнейшей', jump, `+${jump ? words(jump.largest - jump.previousLargest) : 0}`, `№${jump?.number} · ${jump?.previousLargest} → ${jump?.largest} слов`);
   addFact('history-records', 'Устойчивое большинство', majority, `С №${majority?.number}`, 'После каждой лесенки до конца снимка больше половины слов находятся в крупнейшей компоненте.');
@@ -297,7 +358,7 @@ export function initHistory(graph, showWord) {
     }
     equation.append(el('span', '→', 'equation-sign'));
     const result = el('div', undefined, 'equation-part equation-result'); result.append(el('strong', words(step.resultSize)), el('small', 'в получившейся компоненте')); equation.append(result);
-    $('history-added').textContent = `Новых слов: ${step.newWords} · новых уникальных связей: ${step.newEdges}. Под размерами прежних компонент — слова этой лесенки, которые уже входили в них.`;
+    $('history-added').textContent = `Знакомых слов: ${step.nodes.length - step.newWords} · новых: ${step.newWords}. Прежних лесенок с общими словами: ${step.previousGames.length}. Новых уникальных связей: ${step.newEdges} · уже встречавшихся: ${step.reusedEdges}. Под размерами прежних компонент — слова этой лесенки, которые уже входили в них.`;
     $('history-words').replaceChildren(...step.nodes.map((i) => {
       const button = el('button', graph.nodes[i].label); button.type = 'button'; button.title = 'Найти на полной карте';
       button.addEventListener('click', () => showWord(i)); return button;

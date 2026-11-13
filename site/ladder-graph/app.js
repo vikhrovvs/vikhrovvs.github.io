@@ -1,6 +1,6 @@
 'use strict';
 
-import { initHistory } from './history.js?v=3';
+import { initHistory } from './history.js?v=4';
 
 import { schematicLayout } from './layout.js?v=1';
 import { gentleLayout } from './gentle-layout.js?v=1';
