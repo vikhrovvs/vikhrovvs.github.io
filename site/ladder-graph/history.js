@@ -130,7 +130,11 @@ export function initHistory(graph, showWord) {
     button.append(el('span', title), el('strong', step ? value : 'Пока не было'), el('small', step ? note : 'В текущем снимке архива'));
     button.disabled = !step;
     if (step) {
-      button.addEventListener('click', () => { choose(step.index); $('history-position').scrollIntoView({ block: 'center', behavior: 'instant' }); });
+      button.addEventListener('click', () => {
+        choose(step.index);
+        const firstEvent = container === 'history-firsts';
+        $(firstEvent ? 'history-first-title' : 'history-position').scrollIntoView({ block: firstEvent ? 'start' : 'center', behavior: 'instant' });
+      });
       milestoneButtons.push({ button, index: step.index });
     }
     $(container).append(button);

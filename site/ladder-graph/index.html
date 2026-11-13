@@ -6,9 +6,9 @@
   <meta name="theme-color" content="#11130f" />
   <meta name="description" content="Карта слов и подсказок из архива лесенок Interoves." />
   <title>Лесенки — граф связей</title>
-  <link rel="stylesheet" href="./styles.css?v=13" />
+  <link rel="stylesheet" href="./styles.css?v=14" />
   <link rel="stylesheet" href="../project-nav.css?v=1" />
-  <script src="./app.js?v=19" type="module"></script>
+  <script src="./app.js?v=20" type="module"></script>
 </head>
 <body>
   <header>
@@ -96,7 +96,7 @@
           <table class="history-streak-table"><thead><tr><th scope="col">Серия</th><th scope="col">Максимум</th><th scope="col" id="history-streak-step">На выбранном шаге</th></tr></thead><tbody id="history-streaks"></tbody></table>
           <p class="history-hint">Если рекорд повторялся, показаны все равные серии. При пропусках в архиве подряд означает соседние доступные лесенки, а не календарные дни.</p>
         </section>
-        <details class="history-records-details"><summary>Ещё факты: скачок крупнейшей, большинство и рубежи роста</summary><div id="history-records" class="history-facts"></div></details>
+        <section class="history-records-section" aria-labelledby="history-records-title"><h3 id="history-records-title">Ещё факты</h3><div id="history-records" class="history-facts"></div></section>
         <section class="history-journal" aria-labelledby="history-journal-title"><div class="history-journal-heading"><div><h3 id="history-journal-title">События, которые меняли граф</h3><p id="history-event-count" class="history-hint"></p></div><label>Показать <select id="history-filter"><option value="merge">Слияния</option><option value="birth">Новые компоненты</option><option value="attach">Присоединения</option><option value="internal">Внутренние связи</option><option value="all">Все лесенки</option></select></label></div><div id="history-events" class="history-events"></div></section>
         <p class="history-method">Компонента — группа слов, связанных переходами. Новая отдельная лесенка даёт +1 компоненту, пересечение с одной даёт 0, а соединение k прежних компонент даёт 1 − k. Размер крупнейшей считается заново на каждом шаге: её состав и лидер могут меняться.</p>
       </div>
