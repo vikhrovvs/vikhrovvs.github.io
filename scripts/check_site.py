@@ -107,6 +107,8 @@ def main() -> int:
         SITE / "word-grid" / "worker.js",
         SITE / "ladder-graph" / "index.html",
         SITE / "ladder-graph" / "app.js",
+        SITE / "ladder-graph" / "gentle-layout.js",
+        SITE / "ladder-graph" / "gentle-coordinates.json",
         SITE / "ladder-graph" / "styles.css",
         SITE / "ladder-graph" / "data" / "graph.json",
         ROOT / ".github" / "workflows" / "pages.yml",

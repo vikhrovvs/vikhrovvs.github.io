@@ -37,12 +37,14 @@ jobs:
           python3 scripts/test_word_grid.py
           node scripts/test-ladder-paths.mjs
           node scripts/test-ladder-layout.mjs
+          node scripts/test-gentle-layout.mjs
           node --check site/anagrams/app.js
           node --check site/word-route/app.js
           node --check site/word-grid/app.js
           node --check site/word-grid/worker.js
           node --check site/ladder-graph/app.js
           node --check site/ladder-graph/layout.js
+          node --check site/ladder-graph/gentle-layout.js
       - name: Remove private source from runner
         if: always()
         run: rm -f data/ladder-graph/archive.json

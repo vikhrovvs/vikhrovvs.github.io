@@ -1,6 +1,7 @@
 'use strict';
 
 import { schematicLayout } from './layout.js?v=1';
+import { gentleLayout } from './gentle-layout.js?v=1';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('graph'), ctx = canvas.getContext('2d');
@@ -10,7 +11,7 @@ let visibleNodes = [], visibleEdges = [], camera = { x: 0, y: 0, scale: 1 }, wid
 let drag = null, frame = 0;
 let rotatingExamples = [], exampleCursor = 0;
 let highlightedPath = null, pathPositions = new Map(), pathEdges = new Set(), pathCursor = 0;
-let originalPositions, schematic, layoutMode = 'schematic';
+let schematic;
 const edgeKey = (a, b) => `${Math.min(a, b)}:${Math.max(a, b)}`;
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 // Golden-angle hues give every connected component its own bright color.
@@ -142,20 +143,6 @@ function showComponent(component) {
   $('component-leader').replaceChildren(document.createTextNode('Больше всего связей: '), button, document.createTextNode(` · ${leader.degree}`));
 }
 function requestDraw() { if (!frame) frame = requestAnimationFrame(() => { frame = 0; draw(); }); }
-function applyLayout(mode) {
-  layoutMode = mode;
-  const positions = mode === 'schematic' ? schematic.positions : originalPositions;
-  graph.nodes.forEach((node, i) => Object.assign(node, positions[i]));
-  for (const button of document.querySelectorAll('[data-layout]')) button.setAttribute('aria-pressed', String(button.dataset.layout === mode));
-  $('layout-note').textContent = mode === 'schematic'
-    ? 'Одиночные лесенки вытянуты в линии. Развилки и настоящие циклы сохранены. Большая компонента — без изменений.'
-    : 'Исходная силовая раскладка всех компонент. Переключите на схемы, чтобы распутать маленькие лесенки.';
-  focusComponent();
-}
-function focusComponent() {
-  const value = $('component-view').value;
-  fitNodes(value === 'all' ? visibleNodes : visibleNodes.filter((i) => value === 'small' ? schematic.components.has(graph.nodes[i].component) : graph.nodes[i].component === Number(value)));
-}
 function updatePathStep() {
   if (!highlightedPath) return;
   if (pathPositions.has(selected)) pathCursor = pathPositions.get(selected);
@@ -210,7 +197,7 @@ function screen(node) { return { x: (node.x - camera.x) * camera.scale + width /
 function draw() {
   const dpr = window.devicePixelRatio || 1;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, width, height);
-  if (layoutMode === 'schematic') for (const panel of schematic.panels) {
+  for (const panel of schematic.panels) {
     const p = screen(panel), w = panel.width * camera.scale, h = panel.height * camera.scale;
     if (p.x > width || p.y > height || p.x + w < 0 || p.y + h < 0) continue;
     ctx.globalAlpha = highlightedPath ? .25 : 1;
@@ -230,7 +217,7 @@ function draw() {
     ctx.globalAlpha = highlightedPath && !pathEdge ? .15 : 1;
     const a = screen(graph.nodes[e.a]), b = screen(graph.nodes[e.b]), active = e.a === selected || e.b === selected;
     const multiplicity = e.clues.length, multiple = multiplicity > 1;
-    const small = layoutMode === 'schematic' && schematic.components.has(graph.nodes[e.a].component);
+    const small = schematic.components.has(graph.nodes[e.a].component);
     ctx.strokeStyle = pathEdge ? '#69ead7' : multiple ? (active ? '#ffd19b' : '#ffb56bc9') : active ? '#d8ff43b0' : small ? componentColor(graph.nodes[e.a].component, .5) : '#88977b38';
     ctx.lineWidth = pathEdge ? 3 : multiple ? 2.6 + (multiplicity - 2) * .8 + (e === selectedEdge ? 1 : 0) : active ? 1.8 : .8;
     ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
@@ -266,7 +253,7 @@ function draw() {
       ctx.lineWidth = active ? 2.5 : .6 + tier * .45;
       ctx.beginPath(); ctx.arc(p.x, p.y, radius + 2 + tier * .4, 0, Math.PI * 2); ctx.stroke();
     }
-    const endpoint = layoutMode === 'schematic' && schematic.components.has(n.component) && n.degree === 1 && camera.scale > .18;
+    const endpoint = schematic.components.has(n.component) && n.degree === 1 && camera.scale > .18;
     if ((!highlightedPath || pathNode || active) && (active || neighbor || camera.scale > .8 || hub || endpoint)) labels.push({ i, n, p, active, neighbor, radius, tier, endpoint });
   }
   ctx.globalAlpha = 1;
@@ -289,11 +276,9 @@ function fit() {
 function fitNodes(indices) {
   if (!indices.length || width < 130 || height < 110) return;
   const points = indices.map((i) => graph.nodes[i]);
-  if (layoutMode === 'schematic') {
-    const included = new Set(indices);
-    for (const panel of schematic.panels) if (panel.indices.every((i) => included.has(i))) {
-      points.push(panel, { x: panel.x + panel.width, y: panel.y + panel.height });
-    }
+  const included = new Set(indices);
+  for (const panel of schematic.panels) if (panel.indices.every((i) => included.has(i))) {
+    points.push(panel, { x: panel.x + panel.width, y: panel.y + panel.height });
   }
   const minX = Math.min(...points.map((n) => n.x)), maxX = Math.max(...points.map((n) => n.x));
   const minY = Math.min(...points.map((n) => n.y)), maxY = Math.max(...points.map((n) => n.y));
@@ -353,26 +338,25 @@ async function init() {
     const response = await fetch('./data/graph.json');
     if (!response.ok) throw new Error(`HTTP ${response.status}: graph`);
     graph = await response.json();
-    originalPositions = graph.nodes.map(({ x, y }) => ({ x, y }));
     schematic = schematicLayout(graph);
+    let positions = schematic.positions;
+    try {
+      const response = await fetch('./gentle-coordinates.json?v=1');
+      if (!response.ok) throw new Error(`HTTP ${response.status}: coordinates`);
+      positions = await gentleLayout(graph, schematic, await response.json()) || positions;
+    } catch (error) { console.warn('Gentle layout unavailable; using source coordinates for the large component.', error); }
+    graph.nodes.forEach((node, i) => Object.assign(node, positions[i]));
     adjacency = graph.nodes.map(() => []);
     graph.edges.forEach((edge, i) => { adjacency[edge.a].push(i); if (edge.a !== edge.b) adjacency[edge.b].push(i); });
     componentStats = summarizeComponents();
     buildDegreeStatistics();
     buildMultiplicityStatistics();
     visibleNodes = graph.nodes.map((_, index) => index); visibleEdges = [...graph.edges].sort((a, b) => a.clues.length - b.clues.length);
-    for (const [id, summary] of [...componentStats].sort(([a], [b]) => a - b)) {
-      const option = element('option', `№${id + 1} · ${summary.games.size} ${plural(summary.games.size, ['лесенка', 'лесенки', 'лесенок'])} · ${summary.words} ${plural(summary.words, ['слово', 'слова', 'слов'])}`);
-      option.value = id; $('component-view').append(option);
-    }
-    $('component-view').addEventListener('change', focusComponent);
     $('expand-map').addEventListener('click', () => {
       const expanded = document.querySelector('.explorer').classList.toggle('map-expanded');
       $('expand-map').setAttribute('aria-pressed', String(expanded));
       $('expand-map').textContent = expanded ? 'Вернуть панели ↙' : 'Развернуть карту ↗';
     });
-    document.querySelectorAll('[data-layout]').forEach((button) => button.addEventListener('click', () => applyLayout(button.dataset.layout)));
-    applyLayout('schematic');
     $('visible-count').textContent = `${visibleNodes.length} слов · ${visibleEdges.length} связей`;
     const stats = [[graph.gameCount, 'лесенок'], [graph.nodes.length, 'слов'], [graph.edges.length, 'связей'], [graph.clueCount, 'подсказок']];
     $('stats').replaceChildren(...stats.map(([n, text]) => { const s = element('span'); s.append(element('strong', n.toLocaleString('ru')), document.createTextNode(text)); return s; }));
@@ -387,7 +371,7 @@ async function init() {
     new ResizeObserver(() => {
       const rect = canvas.getBoundingClientRect(); width = rect.width; height = rect.height;
       canvas.width = Math.round(width * (devicePixelRatio || 1)); canvas.height = Math.round(height * (devicePixelRatio || 1));
-      if (highlightedPath) fitNodes(highlightedPath.nodes); else focusComponent();
+      if (highlightedPath) fitNodes(highlightedPath.nodes); else fit();
       if (initialCameraPending && !highlightedPath) focusWord(selected);
       initialCameraPending = false;
     }).observe(canvas);
