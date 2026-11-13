@@ -1,5 +1,7 @@
 'use strict';
 
+import { initHistory } from './history.js?v=1';
+
 import { schematicLayout } from './layout.js?v=1';
 import { gentleLayout } from './gentle-layout.js?v=1';
 
@@ -8,7 +10,7 @@ const canvas = $('graph'), ctx = canvas.getContext('2d');
 const normalize = (s) => s.trim().toLocaleLowerCase('ru').normalize('NFC').replace(/\s+/g, ' ');
 let graph, adjacency, componentStats, selected = 0, selectedEdge = null;
 let visibleNodes = [], visibleEdges = [], camera = { x: 0, y: 0, scale: 1 }, width = 1, height = 1;
-let drag = null, frame = 0;
+let drag = null, frame = 0, historyCameraPending = false;
 let rotatingExamples = [], exampleCursor = 0;
 let highlightedPath = null, pathPositions = new Map(), pathEdges = new Set(), pathCursor = 0;
 let schematic;
@@ -338,6 +340,33 @@ async function init() {
     const response = await fetch('./data/graph.json');
     if (!response.ok) throw new Error(`HTTP ${response.status}: graph`);
     graph = await response.json();
+    function showView(view) {
+      for (const name of ['map', 'history']) {
+        const active = name === view, tab = $(`${name}-tab`);
+        tab.setAttribute('aria-selected', String(active)); tab.tabIndex = active ? 0 : -1;
+        $(`${name}-view`).hidden = !active;
+      }
+      const url = new URL(location.href);
+      if (view === 'history') url.searchParams.set('view', 'history'); else url.searchParams.delete('view');
+      history.replaceState(null, '', url);
+    }
+    for (const name of ['map', 'history']) {
+      const tab = $(`${name}-tab`);
+      tab.addEventListener('click', () => showView(name));
+      tab.addEventListener('keydown', (event) => {
+        if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+        event.preventDefault();
+        const next = event.key === 'Home' ? 'map' : event.key === 'End' ? 'history' : name === 'map' ? 'history' : 'map';
+        showView(next); $(`${next}-tab`).focus();
+      });
+    }
+    showView(new URLSearchParams(location.search).get('view') === 'history' ? 'history' : 'map');
+    initHistory(graph, (index) => {
+      clearPath();
+      historyCameraPending = true;
+      showView('map');
+      requestAnimationFrame(() => { selectWord(index, true); canvas.focus({ preventScroll: true }); canvas.scrollIntoView({ block: 'center', behavior: 'instant' }); });
+    });
     schematic = schematicLayout(graph);
     let positions = schematic.positions;
     try {
@@ -369,11 +398,15 @@ async function init() {
     if (selected < 0) selected = graph.nodes.reduce((best, n, i) => n.degree > graph.nodes[best].degree ? i : best, 0);
     let initialCameraPending = Boolean(initial);
     new ResizeObserver(() => {
-      const rect = canvas.getBoundingClientRect(); width = rect.width; height = rect.height;
+      const rect = canvas.getBoundingClientRect();
+      if (!rect.width || !rect.height) return;
+      const changed = width !== rect.width || height !== rect.height;
+      width = rect.width; height = rect.height;
       canvas.width = Math.round(width * (devicePixelRatio || 1)); canvas.height = Math.round(height * (devicePixelRatio || 1));
-      if (highlightedPath) fitNodes(highlightedPath.nodes); else fit();
-      if (initialCameraPending && !highlightedPath) focusWord(selected);
-      initialCameraPending = false;
+      if (changed) { if (highlightedPath) fitNodes(highlightedPath.nodes); else fit(); }
+      else requestDraw();
+      if ((initialCameraPending || historyCameraPending) && !highlightedPath) focusWord(selected);
+      initialCameraPending = false; historyCameraPending = false;
     }).observe(canvas);
     selectWord(selected);
     if (graph.longPaths?.length) {

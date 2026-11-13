@@ -6,9 +6,9 @@
   <meta name="theme-color" content="#11130f" />
   <meta name="description" content="Карта слов и подсказок из архива лесенок Interoves." />
   <title>Лесенки — граф связей</title>
-  <link rel="stylesheet" href="./styles.css?v=11" />
+  <link rel="stylesheet" href="./styles.css?v=12" />
   <link rel="stylesheet" href="../project-nav.css?v=1" />
-  <script src="./app.js?v=17" type="module"></script>
+  <script src="./app.js?v=18" type="module"></script>
 </head>
 <body>
   <header>
@@ -22,7 +22,11 @@
       <div class="intro-note"><p>Каждая линия — переход из настоящей лесенки. Выберите слово, чтобы прочитать подсказки и исследовать его связи.</p><p id="coverage">Загружаем архив…</p></div>
     </section>
     <div class="stats" id="stats" aria-live="polite"></div>
-    <section class="explorer" aria-label="Граф переходов">
+    <div class="view-tabs" role="tablist" aria-label="Режим просмотра">
+      <button id="map-tab" type="button" role="tab" aria-selected="true" aria-controls="map-view">Карта связей</button>
+      <button id="history-tab" type="button" role="tab" aria-selected="false" aria-controls="history-view" tabindex="-1">История графа <span>по лесенкам</span></button>
+    </div>
+    <section id="map-view" class="explorer" role="tabpanel" aria-labelledby="map-tab">
       <aside id="degree-panel" class="degree-panel" aria-labelledby="degree-title">
         <p class="eyebrow">ОБЩИЙ ГРАФ</p>
         <h2 id="degree-title">Соседи слова</h2>
@@ -63,6 +67,32 @@
         </section>
         <div id="neighbors"></div>
       </aside>
+    </section>
+    <section id="history-view" class="history-view" role="tabpanel" aria-labelledby="history-tab" hidden>
+      <div class="history-heading"><div><p class="eyebrow">ОТ ОТДЕЛЬНЫХ ОСТРОВОВ К БОЛЬШОЙ СЕТИ</p><h2>Как лесенки собирают граф</h2></div><p>Добавляем лесенки по номеру, от первой к последней. Каждый шаг — состояние после целой лесенки; будущие слова ещё не учитываются.</p></div>
+      <p id="history-loading" role="status">Загружаем историю…</p>
+      <div id="history-content" hidden>
+        <div id="history-milestones" class="history-milestones"></div>
+        <div class="history-workspace">
+          <div class="history-plots">
+            <div id="history-legend" class="history-legend" aria-label="Типы событий"></div>
+            <svg id="history-chart" viewBox="0 0 1100 490" role="img" aria-label="Число компонент и размер крупнейшей после каждой лесенки"></svg>
+            <div class="history-word-legend"><span>Все слова</span><span>Крупнейшая компонента</span></div>
+            <label class="sr-only" for="history-slider">Выбрать лесенку</label><input id="history-slider" type="range" min="0" max="0" value="0" />
+            <div class="history-navigation"><button id="history-prev" type="button" aria-label="Предыдущая лесенка">←</button><output id="history-position" for="history-slider"></output><button id="history-next" type="button" aria-label="Следующая лесенка">→</button></div>
+            <p class="history-hint">Нажмите на график или двигайте ползунок. Стрелки клавиатуры на ползунке переключают лесенки.</p>
+          </div>
+          <section class="history-step" aria-labelledby="history-step-title">
+            <div aria-live="polite" aria-atomic="true"><p id="history-event-type" class="eyebrow"></p><h3 id="history-step-title"></h3><dl id="history-step-metrics" class="history-step-metrics"></dl><p id="history-explanation"></p></div>
+            <div id="history-equation" class="history-equation" aria-label="Состав получившейся компоненты"></div>
+            <p id="history-added" class="history-hint"></p>
+            <details class="history-words-details"><summary>Слова лесенки · найти на карте</summary><div id="history-words"></div></details>
+            <a id="history-source" target="_blank" rel="noreferrer">Открыть лесенку на Interoves ↗</a>
+          </section>
+        </div>
+        <section class="history-journal" aria-labelledby="history-journal-title"><div class="history-journal-heading"><div><h3 id="history-journal-title">События, которые меняли граф</h3><p id="history-event-count" class="history-hint"></p></div><label>Показать <select id="history-filter"><option value="merge">Слияния</option><option value="birth">Новые компоненты</option><option value="attach">Присоединения</option><option value="internal">Внутренние связи</option><option value="all">Все лесенки</option></select></label></div><div id="history-events" class="history-events"></div></section>
+        <p class="history-method">Компонента — группа слов, связанных переходами. Новая отдельная лесенка даёт +1 компоненту, пересечение с одной даёт 0, а соединение k прежних компонент даёт 1 − k. Размер крупнейшей считается заново на каждом шаге: её состав и лидер могут меняться.</p>
+      </div>
     </section>
     <footer>Источник: авторские лесенки сообщества <a href="https://interoves.com/ladder/">Interoves</a>, которому я очень благодарен за идею. Осторожно: здесь раскрываются ответы.</footer>
   </main>
