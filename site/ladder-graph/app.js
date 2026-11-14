@@ -337,7 +337,7 @@ function zoom(factor, x = width / 2, y = height / 2) {
 }
 async function init() {
   try {
-    const response = await fetch('./data/graph.json');
+    const response = await fetch('./data/graph.json', { cache: 'no-cache' });
     if (!response.ok) throw new Error(`HTTP ${response.status}: graph`);
     graph = await response.json();
     function showView(view) {
@@ -370,7 +370,7 @@ async function init() {
     schematic = schematicLayout(graph);
     let positions = schematic.positions;
     try {
-      const response = await fetch('./gentle-coordinates.json?v=1');
+      const response = await fetch('./gentle-coordinates.json', { cache: 'no-cache' });
       if (!response.ok) throw new Error(`HTTP ${response.status}: coordinates`);
       positions = await gentleLayout(graph, schematic, await response.json()) || positions;
     } catch (error) { console.warn('Gentle layout unavailable; using source coordinates for the large component.', error); }
@@ -390,8 +390,8 @@ async function init() {
     const stats = [[graph.gameCount, 'лесенок'], [graph.nodes.length, 'слов'], [graph.edges.length, 'связей'], [graph.clueCount, 'подсказок']];
     $('stats').replaceChildren(...stats.map(([n, text]) => { const s = element('span'); s.append(element('strong', n.toLocaleString('ru')), document.createTextNode(text)); return s; }));
     const numbers = [...new Set(graph.edges.flatMap((edge) => edge.clues.map((clue) => clue.game)))].sort((a, b) => a - b);
-    const date = new Date(graph.collectedAt).toLocaleDateString('ru', { timeZone: 'Europe/Moscow' });
-    $('coverage').textContent = `Снимок ${date} · №${numbers[0]}–${numbers.at(-1)} · ${graph.componentCount} компонент связности`;
+    const date = new Date(`${graph.lastGameDate}T00:00:00Z`).toLocaleDateString('ru', { timeZone: 'UTC' });
+    $('coverage').textContent = `Лесенки по ${date} · №${numbers[0]}–${numbers.at(-1)} · ${graph.componentCount} компонент связности`;
     $('word-options').replaceChildren(...graph.nodes.map((n) => { const o = element('option'); o.value = n.label; return o; }));
     const initial = normalize(new URLSearchParams(location.search).get('word') || '');
     selected = initial ? graph.nodes.findIndex((n) => n.id === initial) : -1;

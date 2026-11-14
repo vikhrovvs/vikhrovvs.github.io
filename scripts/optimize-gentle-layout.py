@@ -1,13 +1,23 @@
-"""Offline gentle-layout generation. NumPy is not a site or deployment dependency."""
+"""Generate coordinates when topology changes. NumPy is a build-only dependency."""
 import json
 import math
 import hashlib
+import subprocess
+import sys
 from pathlib import Path
 import numpy as np
 
 root = Path(__file__).resolve().parents[1]
-graph = json.loads((root / 'site/ladder-graph/data/graph.json').read_text())
+graph = json.loads((root / 'site/ladder-graph/data/graph.json').read_text(encoding='utf-8'))
 nodes = graph['nodes']
+target = root / 'site/ladder-graph/gentle-coordinates.json'
+topology = json.dumps([[n['id'] for n in nodes], [[e['a'], e['b']] for e in graph['edges']]], ensure_ascii=False, separators=(',', ':'))
+topology_hash = hashlib.sha256(topology.encode()).hexdigest()
+if '--if-needed' in sys.argv and target.exists():
+    previous = json.loads(target.read_text(encoding='utf-8'))
+    if previous.get('topologySha256') == topology_hash and 'crossings' in previous:
+        print('Gentle coordinates already match the graph')
+        sys.exit(0)
 component = max({n['component'] for n in nodes}, key=lambda c: sum(n['component'] == c for n in nodes))
 ids = np.array([i for i, n in enumerate(nodes) if n['component'] == component])
 edges = np.array([[e['a'],e['b']] for e in graph['edges'] if nodes[e['a']]['component'] == component])
@@ -72,8 +82,8 @@ result={'component':component,'positions':[[int(i),*points[i].round(5).tolist()]
         'maxMovement':float(np.max(np.linalg.norm(points[ids]-original[ids],axis=1))),
         'bounds':[low.tolist(),high.tolist()]}
 topology=json.dumps([[n['id'] for n in nodes],[[e['a'],e['b']] for e in graph['edges']]],ensure_ascii=False,separators=(',',':'))
-result.update(schemaVersion=1,topologySha256=hashlib.sha256(topology.encode()).hexdigest())
+result.update(schemaVersion=1,topologySha256=topology_hash)
 target=root/'site/ladder-graph/gentle-coordinates.json'
-target.write_text(json.dumps(result,separators=(',',':'))+'\n')
+target.write_text(json.dumps(result,separators=(',',':'))+'\n', encoding='utf-8')
 print(f'Saved {target}',flush=True)
-print('Run node scripts/test-gentle-layout.mjs --update-counts to audit and record intersection counts.')
+subprocess.run(['node', 'scripts/test-gentle-layout.mjs', '--update-counts'], cwd=root, check=True)

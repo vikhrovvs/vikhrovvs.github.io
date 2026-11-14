@@ -2,12 +2,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { findLongPaths } from './ladder-paths.mjs';
+import { validateArchive, gameDate } from './ladder-archive.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const folder = path.join(root, 'site/ladder-graph/data');
 const archivePath = path.join(root, 'data/ladder-graph/archive.json');
 if (!fs.existsSync(archivePath)) throw new Error('Local source archive is missing: data/ladder-graph/archive.json (not stored in Git)');
 const archive = JSON.parse(fs.readFileSync(archivePath, 'utf8'));
+validateArchive(archive);
 if (archive.failures.length || archive.games.length !== archive.discovered.length) {
   throw new Error('Archive is incomplete; resolve export failures before rebuilding');
 }
@@ -80,7 +82,7 @@ components.forEach((component, componentId) => {
   cursorX += width; rowHeight = Math.max(rowHeight, height);
 });
 const longPaths = findLongPaths(adj, components);
-const graph = { schemaVersion: 1, source: archive.source, collectedAt: archive.collectedAt, gameCount: archive.games.length, clueCount: archive.games.reduce((n, g) => n + g.transitions.length, 0), componentCount: components.length, nodes, edges, longPaths };
+const graph = { schemaVersion: 1, source: archive.source, collectedAt: archive.collectedAt, lastGameDate: archive.games.map(gameDate).sort().at(-1), gameCount: archive.games.length, clueCount: archive.games.reduce((n, g) => n + g.transitions.length, 0), componentCount: components.length, nodes, edges, longPaths };
 fs.mkdirSync(folder, { recursive: true });
 fs.writeFileSync(path.join(folder, 'graph.json'), JSON.stringify(graph));
 console.log(`${graph.gameCount} games, ${graph.clueCount} clues, ${nodes.length} words, ${edges.length} undirected edges, ${components.length} components`);

@@ -1,0 +1,2 @@
+# Build-time coordinate optimization; never loaded by the website.
+numpy==2.3.5

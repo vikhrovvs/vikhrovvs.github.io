@@ -31,11 +31,16 @@ jobs:
         run: |
           python3 scripts/ladder-source.py restore
           node scripts/build-ladder-graph.mjs
+      - name: Update topology-dependent coordinates
+        run: |
+          python3 -m pip install -r scripts/requirements-ladder.txt
+          python3 scripts/optimize-gentle-layout.py --if-needed
       - name: Validate static site
         run: |
           python3 scripts/check_site.py
           python3 scripts/test_word_grid.py
           node scripts/test-ladder-history.mjs
+          node scripts/test-ladder-archive.mjs
           node scripts/test-ladder-paths.mjs
           node scripts/test-ladder-layout.mjs
           node scripts/test-gentle-layout.mjs
